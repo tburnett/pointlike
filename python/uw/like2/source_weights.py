@@ -2,7 +2,7 @@
 Code that manages computation and saving tables of the weights for a source, for each band
 """
 
-import sys, os
+import sys, os, argparse, glob
 import numpy as np
 import pandas as pd
 import healpy
@@ -16,8 +16,8 @@ from skymaps import SkyDir, Band
 class Weights(object):
 
     defaults=(
-        ('verbose', 2, 'verbosity'),
-        ('radius', 5.2, 'Radius to use'),
+        ('verbose', 1,  'verbosity'),
+        ('radius', 7.1, 'Radius to use'),
         ('nside' ,  64, 'nside'),
         ('energy_bins', np.logspace(2,6, 17), 'standard bins'),
         ('energy_count', 8, 'Total number of energy bins to actually use'),      
@@ -31,9 +31,18 @@ class Weights(object):
         if self.energy_count is not None:
             self.energy_bins = self.energy_bins[:self.energy_count]
         if type(source_name)==str:
-            t = SkyCoord.from_name(source_name); 
-            ra,dec=( t.fk5.ra.value, t.fk5.dec.value) 
-        else:
+            # first check to see if a local soruce
+            print 'Searching for name {} ...'.format(source_name),
+            fn = glob.glob('sources_*.csv')[0]
+            df = pd.read_csv(fn, index_col=0)
+            if source_name in df.index:
+                print 'Found in model:'
+                ra,dec = df.loc[source_name]['ra dec'.split()]
+            else: #look up from SkyCoord
+                t = SkyCoord.from_name(source_name); 
+                ra,dec=( t.fk5.ra.value, t.fk5.dec.value) 
+                print 'found by SkyCoord'
+        else: # just a tuple
             ra,dec = source_name
 
         # select an ROI by the ra, dec specified or found from SkyCoord
@@ -54,7 +63,8 @@ class Weights(object):
 
     def make_weights(self, ):
         if self.verbose>0:
-            print 'Generating pixels with weights for {} energies'.format(len(self.energy_bins))
+            print 'Generating nside={} pixels in radius {} for {} energies'.format(
+                self.nside, self.radius, len(self.energy_bins))
         # direection of source
 
         source_dir = self.source.skydir
@@ -90,7 +100,8 @@ class Weights(object):
             band_id = 2*ie+band.band.event_type
             if self.verbose>1:
                 print '{}'.format(band_id),
-            wt_dict[band_id] = np.array([ weight(band, pd) for pd in pixel_dirs]).astype(np.float32)
+            wt_dict[band_id] = np.array(
+                [ weight(band, pd) for pd in pixel_dirs] ).astype(np.float32)
         if self.verbose>1: print 
         
         return  pix_nest, wt_dict
@@ -114,14 +125,30 @@ class Weights(object):
             weights = weights,
         )
         pickle.dump(outdict, open(filename, 'wb'))
-        if self.verbose>1:
+        if self.verbose>0:
             print 'wrote file {}'.format(filename)
 
-def main(source_name, filename):
+def runit(source_name, filename=None, overwrite=True, **kwargs):
     """ Use model in which this is run to create a weight file
     parameters:
         source_name 
-        filename : name of pickled file
+        filename : name of pickled file | None
+            if None, create file name
     """
-    sw = Weights(source_name)
-    sw.write(filename)
+
+    if filename is None or filename=='(none)':
+        filename = 'weight_files/'+source_name.replace(' ','_').replace('+','p')+'_weights.pkl'
+    if os.path.exists(filename) and not overwrite:
+        print 'File {} exists, not replacing'.format(filename)
+    else:
+        sw = Weights(source_name, **kwargs)
+        sw.write(filename)
+    
+if __name__=='__main__':
+    parser = argparse.ArgumentParser(description='Create file with weights for a source')
+    parser.add_argument('source_name', nargs=1, help='name for a source')
+    parser.add_argument('--file_name' , default=None,   
+                        help='file to write to. Default: <source_name>_weights.pkl')
+    args = parser.parse_args()
+
+    runit(args.source_name[0], args.file_name)

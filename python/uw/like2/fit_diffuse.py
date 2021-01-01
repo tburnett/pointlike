@@ -10,12 +10,14 @@ from . import ( diffuse, maps,)
 
 
 def fitter(roi, nbands=8, select=[0,1], folder='diffuse_fit_maps', 
-    corr_min=-0.95, update=False):
+    corr_min=-0.95, update=False, batch=True):
     """
     Perform independent fits to the gal, iso for each of the first nbands bands.
     If such a fit fails, or the correlation coeficient less than corr_min, fit only the isotropic.
     select: None or list of variables
     update: if True, modify the correction coefficients
+
+    If select==[0]: do gal only, with iso fixed at 1.
     """
 
     # thaw gal and iso
@@ -34,13 +36,14 @@ def fitter(roi, nbands=8, select=[0,1], folder='diffuse_fit_maps',
     for ie in range(nbands):
         roi.select(ie); 
         energy =int(roi.energies[0]) 
-        print '----- E={} -----'.format(energy)
-        roi.fit(select, setpars={0:0, 1:0}, ignore_exception=True)
+        print '----- E={} {} -----'.format(energy, select)
+        roi.fit( select, setpars={0:0, 1:0}, ignore_exception=True)
         cov = roi.fit_info['covariance']
-        if cov is None or cov[0,0]<0 or corr(cov)<corr_min:
+        if len(select)>1 and (cov is None or len(cov)<2 or cov[0,0]<0 or corr(cov)<corr_min):
             #fail, probably since too correlated, or large correlation. So fit only iso
             roi.fit([1], setpars={0:0, 1:0}, ignore_exception=True)
             cov=np.array([ [0, roi.fit_info['covariance'][0]] , [0,0] ])
+            print 'set cov: {}'.format(cov)
         energies.append(energy)
         dpars.append( roi.sources.parameters.get_parameters()[:2])
         covs.append(cov)
@@ -78,11 +81,22 @@ def fitter(roi, nbands=8, select=[0,1], folder='diffuse_fit_maps',
             print 'wrote file {}'.format(filename)
     
     if update:
+        # check keys: if set, update, otherwise store fit value
+        gal_key = roi.config.diffuse['ring'].get('key', '')=='gal'
+        iso_key = roi.config.diffuse['ring'].get('key', '')=='iso'
         # update correction factors, reload all response objects
         dn=diffuse.normalization
-        dn['gal'] *= df.gal.values
-        dn['iso']['front'] *= df.iso.values
-        dn['iso']['back'] *= df.iso.values
+        
+        if gal_key:
+            dn['gal'] *= df.gal.values
+        else:
+            dn['gal'] = df.gal.values
+        if iso_key:
+            dn['iso']['front'] *= df.iso.values
+            dn['iso']['back'] *= df.iso.values
+        else:
+            dn['iso']['front'] = df.iso.values
+            dn['iso']['back']  = df.iso.values
 
         # now reload
         for band in roi:
@@ -91,18 +105,26 @@ def fitter(roi, nbands=8, select=[0,1], folder='diffuse_fit_maps',
                 res.setup=False
                 res.initialize()
         print 'Updated coefficients'
+    if batch: return
 
     # for interactive: convert covariance matrix to sigmas, correlation
     gsig=[]; isig=[]; corr=[]
     for i in range(len(df)):
         c = df.iloc[i]['cov']
-        diag = np.sqrt(c.diagonal())
-        gsig.append(diag[0])
-        isig.append(diag[1])
-        corr.append(c[0,1]/(diag[0]*diag[1]))
+        if len(select)==2:
+            diag = np.sqrt(c.diagonal())
+            gsig.append(diag[0])
+            isig.append(diag[1])
+            corr.append(c[0,1]/(diag[0]*diag[1]))
+        elif select==[0]:
+            gsig.append(np.sqrt(c[0]))
+            corr.append(0)
+            isig.append(0)
+            
     df['gsig']=gsig
-    df['isig']=isig
+    df['isig']=isig 
     df['corr']=corr
+
     del df['cov']
 
     return df

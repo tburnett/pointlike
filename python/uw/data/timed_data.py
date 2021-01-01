@@ -120,23 +120,43 @@ class TimedData(object):
 def create_timed_data(
         monthly_ft1_files='/afs/slac/g/glast/groups/catalog/P8_P305/zmax105/*.fits',
         outfolder='$FERMI/data/P8_P305/time_info/',
-        overwrite=False  ):
+        overwrite=False,
+        test=False, 
+        verbose=1):
     """
     """
     files=sorted(glob.glob(monthly_ft1_files))
     assert len(files)>0, 'No ft1 files found at {}'.format(monthly_ft1_files)
     gbtotal = np.array([os.stat(filename).st_size for filename in files]).sum()/2**30
-    print '{} FT1 files found, {} GB total'.format(len(files), gbtotal)
+    if verbose>0:
+        print '{} monthly FT1 files found at {}\n\t {} GB total'.format(len(files), monthly_ft1_files, gbtotal)
     outfolder = os.path.expandvars(outfolder)
     if not os.path.exists(outfolder):
         os.makedirs(outfolder)
-    os.chdir(outfolder)   
+    os.chdir(outfolder)  
+    if verbose>0:
+        print 'Writing time files to folder {}\n\toverwrite={}'.format(outfolder, overwrite) 
     for filename in files:
         m = filename.split('_')[-2]
         outfile = 'month_{}.pkl'.format(m)
         if not overwrite and os.path.exists(outfile) :
-            print 'exists: {}'.format(outfile)
+            if verbose>1:
+                print 'exists: {}'.format(outfile)
+            else: 
+                print '.',
             continue
-        print 'writing {}'.format(outfile),
+
         tr = binned_data.ConvertFT1(filename).time_record()
-        pickle.dump(tr, open(outfile, 'w'))
+        if not test:
+            if verbose>1:
+                print 'writing {}'.format(outfile),
+            elif verbose>0:
+                print '+',
+            pickle.dump(tr, open(outfile, 'wr'))
+        else:            
+            if verbose>0:
+                print 'Test: would have written {}'.format(outfile)
+    # check how many exist
+    files=sorted(glob.glob(outfolder+'/*.pkl'))
+    gbtotal = np.array([os.stat(filename).st_size for filename in files]).sum()/float(2**30)
+    print '\nThere are {} timed data files, {:.1f} GB total'.format(len(files), gbtotal)

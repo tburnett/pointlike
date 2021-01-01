@@ -24,10 +24,10 @@ class Associations(sourceinfo.SourceInfo):
         <li>All pulsars from the "bigfile" list maintained by D. Smith</li> 
         <li>The latest BZCAT list of blazars
     </ul>
-    Note that priors are not recalculated, we use the values determined for 2FGL. 
+    <p>Note that priors are not recalculated, we use the values determined for 2FGL. 
     The method is explained in the <a href="http://arxiv.org/pdf/1002.2280v1.pdf">1FGL paper</a>, see Appendix B.
     <p>
-    <p>Note that the current pipeline has the Planck and WISE catalogs.
+    <p>Also, the current pipeline has the Planck and WISE catalogs.
     """
     
     def setup(self, **kw):
@@ -115,7 +115,7 @@ class Associations(sourceinfo.SourceInfo):
         if ax is None:
             fig,ax = plt.subplots(figsize=(5,5))
         else: fig = ax.figure
-        hist_kw=dict(log=True, histtype='step', lw=2)
+        hist_kw=dict(log=True, histtype='step',color='grey', lw=2)
         binsize=0.5; maxts=12
         bins = np.linspace(0,maxts,maxts/binsize+1)
 
@@ -201,6 +201,8 @@ class Associations(sourceinfo.SourceInfo):
                             locqual=dfagn.locqual[i],
                             ang=a['ang'][j],
                             pindex=dfagn.pindex[i],
+                            # pivot=dfagn.pivot[i],
+                            # curvature=dfagn.curvature[i],
                             )
         print 'bzdict length:', len(bzdict)
         self.bzdf = bzdf = pd.DataFrame(bzdict).T 
@@ -263,7 +265,12 @@ class Associations(sourceinfo.SourceInfo):
         bzdf.to_csv(self.plotfolder+'/bzcat_summary.csv')
         return fig
         
-
+    def no_pulsar_check(self):
+        """Pulsar checks
+        Pulsar analyses moved: see 
+         <br>See <a href="../pulsars/index.html?skipDecoration"> pulsars</a> for analysis that was here.
+        """
+        return None
 
 
     def pulsar_check(self):
@@ -399,56 +406,76 @@ class Associations(sourceinfo.SourceInfo):
             self.pulsar_candidates='No candidates found'
         return ptx if test else None    
     
-    def localization_check(self, tsmin=100, dtsmax=9, qualmax=5, systematic=None):
+    def localization_check(self, tsmin=100, dtsmax=9, qualmax=5, systematic=None, make_plots=True):
         r"""Localization resolution test
         
-        The association procedure records the likelihood ratio for consistency of the associated location with the 
-        fit location, expressed as a TS, or the difference in the TS for source at the maximum, and at the associated
-        source. The distribution in this quantity should be an exponential, $\exp(-\Delta TS/2/f^2)$, where $f$ is a scale factor
-        to be measured from the distribution. If the PSF is a faithful representation of the distribution of photons
-        from a point source, $f=1$. For 1FGL and 2FGL we assumed 1.1. The plots show the results for AGN, LAT pulsars, and
-        all other associations. They are cut off at 9, corresponding to 95 percent containment.
-        <br>%(localization_html)s
+        The association procedure records the likelihood ratio for consistency of the associated location
+        with the fit location, expressed as a TS, or the difference in the TS for source at the maximum,
+        and at the associated
+        source. The distribution in this quantity should be an exponential, $\exp{-\Delta TS/2/f^2}$,
+        where $f$ is a scale factor to be measured from the distribution. 
+        If the PSF is a faithful representation of the distribution of photons
+        from a point source, $f=1$. For 1FGL and 2FGL we assumed 1.1. The plots show the results for AGN,
+        LAT pulsars, and all other associations. They are cut off at 9, corresponding to 95 percent
+        containment.
+        <br><br>%(localization_html)s
         """
         self.localization_html = 'Cuts: TS>{}, Delta TS<{}, localization quality <{}'.format(tsmin, dtsmax, qualmax) 
         if systematic is None:
-            systematic = self.config['localization_systematics'] if 'localization_systematics' in self.config.keys() else (1,0)
-        self.localization_html+= '<br>Applied systematic factor {:.2f} and {} arcmin added in quadrature with r95'.format(*systematic)
-        
+            systematic = self.config['localization_systematics']\
+                if 'localization_systematics' in self.config.keys() else (1,0)
+        if len(systematic)<2: systematic.append(1)
+
+        txt = 'Applied systematic factor: {0:.2f} ({2:.2f} if |b|<5) and {1} arcmin '\
+                'added in quadrature with r95.'.format(*systematic)
+        print txt        
+        self.localization_html+= '<br><br>'+txt
 
         t = self.df.acat
         df = self.df
         ts = np.array(df.ts,float)
         locqual = np.array(df.locqual,float)
+        locqual[np.isnan(locqual)]=99
         r95 = 60* 2.45 * np.sqrt(np.array(df.a, float)*np.array(df.b,float))
+        r95[np.isnan(r95)]=99
+        
+        # population selections from association
         agn = np.array([x in 'crates bzcat agn bllac'.split() for x in t])
         psr = np.array([x in 'pulsar_lat'.split() for x in t])
         unid= np.array([x in 'unid'.split() for x in t])
         otherid=~(agn | psr | unid)
         
-        #adjust using the systematics
-        deltats = df.adeltats / (systematic[0]**2 + (systematic[1]/r95)**2)
+        hilat = np.abs(df.glat.values)>5
+        
+        # adjust using the systematics
+        sf = np.where(hilat, systematic[0], systematic[2])
+        sa = systematic[1]
+        deltats = df.adeltats / (sf**2 + (sa/r95)**2)
 
-        def select(sel, rlim=(0,5) ,):
+        def select(sel, rlim=(0,20) ,):
             cut = sel & (df.aprob>0.8) & (ts>tsmin) & (locqual<qualmax) & (r95>rlim[0]) & (r95<rlim[1])
             return deltats[cut]
-            
+        
+        
         cases = [(agn, 'AGN strong', (0,1)), (agn,'AGN mod.', (1,2)), (agn,'AGN weak',(2,20)),
-                (psr, 'LAT PSR',(0,20)), (otherid, 'other ids',(0,20))]
+                 (psr&hilat, 'PSR high',(0,20)),(psr&~hilat, 'PSR low',(0,20)),  
+                  (agn&hilat, 'AGN high',(0,20)),(agn&~hilat, 'AGN low',(0,20)),  
+                 (otherid, 'other ids',(0,20))]
         zz=[]
-        print '{:12} {:10} {:6} {:6}'.format(*'Selection range number factor'.split())
-        for sel, name,rcut in cases:
+        print '{:14} {:10} {:6} {:6}'.format(*'Selection range number factor'.split())
+        for sel, name, rcut in cases:
             cut = select(sel, rcut)
             try:
                 z = FitExponential(cut, name);
             except:
                 z = None
-            print '{:12} {:3}{:3}  {:6.0f} {:6.2f}'.format(name,
+            print '{:14} {:3}{:3}  {:6.0f} {:6.2f}'.format(name,
                      rcut[0],rcut[1], len(z.vcut), z.factor if z is not None else 99)
             zz.append(z)
-            
- 
-        fig, axx = plt.subplots(1,5, figsize=(15,4), sharex=True)
+        self.fit_summary=zz    
+        if not make_plots: return
+        fig, axx = plt.subplots(2,len(cases)//2, figsize=(12,8), sharex=True)
+        plt.tight_layout()
         for ax, z in zip(axx.flatten(), zz):
             z.plot(ax=ax, xlabel=r'$\Delta TS$');
         #axx.flatten()[-1].set_visible(False)           
@@ -460,9 +487,11 @@ class Associations(sourceinfo.SourceInfo):
 
         This is an analysis of a set of unassociated soft (index>2.2) sources that have a concentration 
         in the inner galaxy region (|b|<10, |l|<50). We examine soft, near-power-law sources. 
-        <p>The first row is for those that are associated, the second unassociated. THe left plot is energy flux vs.
-        spectral index. It shows a line that is an energy flux minimum for the next two histograms.
-        <p>A list selected with the queries "%(softie_query)s", and then "%(unid_query)s" which are not associated can be downloaded 
+        <p>The first row is for those that are associated, the second unassociated. 
+        The left plot is energy flux vs. spectral index. It shows a line that is an energy flux
+        minimum for the next two histograms.
+        <p>A list selected with the queries "%(softie_query)s", and then "%(unid_query)s" which are
+        not associated can be downloaded 
         <a href="../../%(softie_filename)s?download=true">here</a>, and viewed in the following table.
         <p>%(softie_table)s 
 
@@ -572,9 +601,14 @@ class Associations(sourceinfo.SourceInfo):
         return fig
 
     def all_plots(self):    
-        self.runfigures([self.summary, self.pulsar_check, self.pulsar_candidates, 
-        self.association_vs_ts, self.localization_check, self.bzcat_study, 
-        self.unassociated_soft, self.softie_geometry,])
+        self.runfigures([
+            self.summary, 
+            self.no_pulsar_check,
+            #self.pulsar_check, self.pulsar_candidates, 
+            self.association_vs_ts, self.localization_check, 
+            self.bzcat_study, 
+            self.unassociated_soft, self.softie_geometry,
+        ])
 
 
 class FitExponential(object):
@@ -611,7 +645,9 @@ class FitExponential(object):
         else:fig = ax.figure
         x = np.linspace(0, self.vmax, int(self.vmax/self.binsize)+1) 
         ax.plot(x, self(x), '-r', lw=2,  label='factor=%.2f'% self.factor)
-        ax.hist( self.vcut, x, label='%d %s'%(len(self.vcut),self.label), histtype='stepfilled')
+        ax.hist( self.vcut, x, label='%d %s'%(len(self.vcut),self.label), 
+                edgecolor='black', color='lightgrey',
+                histtype='stepfilled')
         ax.set_ylim(ymin=0)
 
         ax.grid(); ax.legend()

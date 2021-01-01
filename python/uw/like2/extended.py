@@ -357,7 +357,7 @@ def make_map_and_list(config_dir='.', nside=512, extended_folder='extended'):
             os.mkdir(extended_folder)
         csvfile = extended_folder+'/sources.csv'
         df.to_csv(csvfile)
-        print 'wrote csv file {}'.format(csvfile)
+        print 'Wrote {} extended sources to csv file {}'.format(len(df),csvfile)
         
         fitsfile = extended_folder+'/map.fits'
         ext = hpm.HParray('extended', sky)

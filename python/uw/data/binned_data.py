@@ -76,6 +76,9 @@ class GTI(object):
     def __repr__(self):
         return '{} intervals from {:.0f} to {:.0f}, {:,.0f} s'.format(len(self.start), 
             self.start[0], self.stop[-1], sum(self.stop-self.start))
+    @property
+    def livetime(self):
+        return sum(self.stop-self.start)
 
 
 class BandList(object):
@@ -472,11 +475,12 @@ class BinFile(object):
 
         df = self.dataframe()
         # combine event types
-        f= df.query('event_type==0')
-        b= df.query('event_type==1')
-        ee = 0.5*(b.e_min+b.e_max)
-        pixels = b.pixels.values+f.pixels.values
-        photons =  b.photons.values+f.photons.values
+        # f= df.query('event_type==0')
+        # b= df.query('event_type==1')
+
+        ee = 0.5*(df.e_min+df.e_max)
+        pixels = df.pixels.values
+        photons =  df.photons.values
         plt.rc('font', size=14)
         if ax is None:
             fig,ax = plt.subplots(figsize=(8,6))
@@ -497,6 +501,7 @@ class ConvertFT1(object):
         ('etypes', (0,1), 'event type index'),
         ('theta_cut', 66.4, 'Maximum instrument theta'),
         ('z_cut', 100, 'Maximum zenith angle'),
+        ('verbose', 0, 'Verbosity'),
     )
 
     @keyword_options.decorate(defaults)
@@ -505,7 +510,7 @@ class ConvertFT1(object):
         """
         keyword_options.process(self, kwargs)
         self.ft1_hdus=ft1 = fits.open(ft1_file)
-        self.tstart = ft1[0].header['TSTART']
+        self.tstart = ft1[1].header['TSTART'] # changed from 0 (redundant?) due to new Ballet FT1-generation
 
         # extract arrays for values of interest
         data =ft1['EVENTS'].data
@@ -517,7 +522,8 @@ class ConvertFT1(object):
         for et in self.etypes:
             self.et_mask[et]= self.et[:,-1-et]
         self.data_cut = np.logical_and(self.theta<self.theta_cut, self.z<self.z_cut)
-        print 'Found {} events. Removed: {:.2f} %'.format(len(data), 100.- 100*sum(self.data_cut)/float(len(data)));
+        if self.verbose>0:
+            print 'Found {} events. Removed: {:.2f} %'.format(len(data), 100.- 100*sum(self.data_cut)/float(len(data)));
 
         # DataFrame with component values for energy and event type, nside
         t = {}
@@ -638,7 +644,7 @@ class ConvertFT1(object):
 
 def run_binner(monthly_ft1_files='/afs/slac/g/glast/groups/catalog/P8_P305/zmax105/*.fits',
         outfolder='$FERMI/data/P8_P305/monthly',
-        overwrite=False):
+        overwrite=False, verbose=0, **kwargs):
 
     files=sorted(glob.glob(monthly_ft1_files))
     assert len(files)>0, 'No ft1 files found at {}'.format(monthly_ft1_files)
@@ -649,6 +655,8 @@ def run_binner(monthly_ft1_files='/afs/slac/g/glast/groups/catalog/P8_P305/zmax1
     if not os.path.exists(outfolder):
         os.makedirs(outfolder)
     os.chdir(outfolder) 
+    if verbose>0:
+        print 'Writing to folder {}'.format(outfolder)
 
     for ft1_file in files:
         outfile = ft1_file.split('/')[-1].replace('_zmax105.fits', '_zmax100_4bpd.fits')
@@ -656,10 +664,14 @@ def run_binner(monthly_ft1_files='/afs/slac/g/glast/groups/catalog/P8_P305/zmax1
             print 'File {} exists'.format(outfile)
             continue
 
-        bdt = ConvertFT1(ft1_file)
-        bdt.binner()
+        bdt = ConvertFT1(ft1_file, verbose=verbose, **kwargs)
+        bdt.binner(quiet=verbose<2)
         bdt.create_fits(outfile)
-        print '\twrote {}'.format(outfile)
+        if verbose>0: 
+            print '\twrote {}'.format(outfile)
+        else:
+            print '.',
+    print 'Done.'
 
 def combine_monthly(
         infolder='$FERMI/data/P8_P305/monthly',

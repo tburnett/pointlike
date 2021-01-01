@@ -195,6 +195,8 @@ class DiffuseResponse(Response):
             dirs = map(self.dmodel.dirfun, hplist)
             self.evalpoints = lambda dirs : np.array(map(self.dmodel, dirs)) * self.corr / scale_factor
             self.ap_average = self.evalpoints(dirs).mean()
+            # **** scale by years ****
+            self.ap_average *= self.years/10.
         
         else:
             self.create_grid() # will raise exception if no overlap
@@ -282,6 +284,7 @@ class DiffuseResponse(Response):
                 if not self.quiet:print '\tsystematic: %.3f' % self.systematic
             if 'preconvolved' in dfun.kw:
                 self.preconvolved = dfun.kw['preconvolved']
+                self.years = dfun.kw.get('years', 10)
         else: 
             self.corr =1.0; self.systematic = None
             

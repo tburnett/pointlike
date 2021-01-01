@@ -49,15 +49,21 @@ def html_table( df, columns={}, name='temp', heading='', href=True,
         t = t.replace('>'+h+'<', ' title="%s">%s<'% (title, newhead if newhead!='' else h))
     
     def repit(s, t):
+        bad = 0
         for n in s:
             fnpat = href_pattern %  n.replace(' ','_').replace('+','p') 
             q = glob.glob(fnpat)
             if len(q) ==0: 
-                print '**File %s not found' % fnpat
+                if bad<10:
+                    print '** File %s not found' % fnpat
+                    bad +=1
+
                 continue
             i = t.find(n+'<')
             assert i>0, 'pattern not found for %s' % n
             t = t.replace(n+'<', '<a href="../../%s">%s<' %(q[0],n))
+        if bad>0:
+            print '** {} files not found'.format(bad)
         return t
 
     if href:
@@ -346,17 +352,22 @@ class AnalysisBase(object):
         """
         pkls = []
         zipfilename = folder+'.zip' #os.path.split(folder+'.zip')[0]
-        
-        if os.path.exists(zipfilename):
-            print 'unpacking file %s ...' % (os.getcwd()+'/'+zipfilename ,),
-            z = zipfile.ZipFile(zipfilename)
-            files = sorted( filter( lambda n: n.startswith(folder) and n.endswith('.pickle'), z.namelist() ) ) 
-            print 'found %d *.pickle files in folder %s' % (len(files), folder)
-            opener = z.open
-        else:
-           files = sorted(glob.glob(os.path.join(folder,'*.pickle')))
-           opener = open
-        assert len(files)>0, 'no files found in %s' % folder 
+        if not os.path.exists(zipfilename):
+            # try input
+            input_model = self.config['input_model']['path']
+            zipfilename = os.path.join(input_model, zipfilename)
+            assert os.path.exists(zipfilename), 'Zip file {} not found in . or {}'.format(folder, input_model)
+
+        print 'unpacking file %s ...' % (os.getcwd()+'/'+zipfilename ,),
+        z = zipfile.ZipFile(zipfilename)
+        files = sorted( filter( lambda n: n.startswith(folder) and n.endswith('.pickle'), z.namelist() ) ) 
+        print 'found %d *.pickle files in folder %s' % (len(files), folder)
+        opener = z.open
+        #  always get from the zip file now
+        # else:
+        #    files = sorted(glob.glob(os.path.join(folder,'*.pickle')))
+        #    opener = open
+        assert len(files)>0, 'no files found in %s' % zipfilename 
         pkls = [pickle.load(opener(file)) for file in files]
         return files,pkls
     

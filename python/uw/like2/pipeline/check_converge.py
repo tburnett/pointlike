@@ -110,7 +110,7 @@ def main(args):
         r = pipe.roirec(absskymodel)
         q = pipe.check_converge(absskymodel, tol=12 , add_neighbors=False)
         open('update_roi_list.txt', 'w').write('\n'.join(map(str, sorted(qq))))
-        if stage_args[0]!='only' and stage_args[0]!='associations':
+        if stage_args[0]!='only' and stage_args[0]!='zero' and stage_args[0]!='associations':
             if  len(q)>1:
                 if len(qq)> 200:
                     create_stream('update')

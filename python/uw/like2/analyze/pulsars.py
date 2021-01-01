@@ -66,8 +66,12 @@ class Pulsars(sourceinfo.SourceInfo):
             df['adeltats'] = np.array([assoc['deltats'][0] if not pd.isnull(assoc) else np.nan for assoc in associations])
 
         load_assoc(self.df)
+        keep = self.df[self.psr]
+        keep.to_csv('pulsars.csv')
 
     def check4FGL(self, pattern=None):
+
+            if hasattr(self, 'gdf'): return
         
             # add 4FGL info to dataframe of pointlike soruies
             df=self.df
@@ -81,6 +85,7 @@ class Pulsars(sourceinfo.SourceInfo):
                 pattern=self.config['gllcat']
             if not pattern.startswith('/'):
                 pattern = '$FERMI/catalog/'+pattern
+            self.fgl_name = pattern.split('/')[-2]
             filename = sorted(glob.glob(os.path.expandvars(pattern)))[-1]
             fcat = fermi_catalog.GLL_PSC2(filename)
             self.fhl_file = fcat.filename.split('/')[-1]
@@ -103,7 +108,7 @@ class Pulsars(sourceinfo.SourceInfo):
             df.loc[df.index[ok], 'distance']=0
 
             # look for nearest 4FGL source in rejected list: add name, distance to DataFrame
-            print 'Searching 4FGL for nearest source to the {} not found in it...'.format(sum(added)),
+            print 'Searching {} for nearest source to the {} not found in it...'.format(self.fgl_name,sum(added)),
             close = tools.find_close(df[added], self.gdf)
 
             df.loc[df.index[~ok],'otherid'] = close.otherid
@@ -159,7 +164,7 @@ class Pulsars(sourceinfo.SourceInfo):
         psrmodel = (self.df.ts>16) & (self.df.modelname=='PLSuperExpCutoff') & self.df.psr
         self.spectral_fits = sum(psrmodel)
         t = self.df.loc[psrmodel]\
-            ['ts flux pindex cutoff e0 index2 index2_unc roiname freebits fitqual msec'.split()]
+            ['ts flux pindex cutoff e0 index2 index2_unc pivot_energy roiname freebits fitqual msec'.split()]
         t['eflux'] = t.flux * t.e0**2 * 1e6
         msec = np.array(t.msec.values,bool)  
 
@@ -207,10 +212,16 @@ class Pulsars(sourceinfo.SourceInfo):
             ax.legend(loc='lower right', prop=dict(size=10))
             ax.xaxis.set_major_formatter(ticker.FuncFormatter(
                 lambda val,pos: { 100:'0.1', 1000:'1', 10000:'10'}.get(val,'')))
+        def plot5(ax):
+            bins = np.logspace(2,4,41)
+            histit(ax, bins, vals=t.pivot_energy.astype(float ))
+            ax.set(xscale='log', xlabel='pivot energy')
+            ax.grid(alpha=0.5)
+            
 
-        fig, axx = plt.subplots( 2,2, figsize=(12,12))
+        fig, axx = plt.subplots( 2,3, figsize=(12,12))
         plt.subplots_adjust(wspace=0.3, left=0.05,bottom=0.15)
-        map(lambda f,ax:f(ax),(plot1,plot2,plot3,plot4,), axx.flatten())
+        map(lambda f,ax:f(ax),(plot1,plot2,plot3,plot4,plot5), axx.flatten()[:5])
 
         tail_cut = (t.pindex<=index_min) | (t.pindex>index_max) | (t.cutoff>cutoff_max)
         tails = t.loc[tail_cut].index
@@ -232,18 +243,31 @@ class Pulsars(sourceinfo.SourceInfo):
  
     def pulsar_check(self):
             """LAT pulsar check
+
             %(atable)s
-            """
+            %(missing_table)s
+           """
+             
+            
             # compare with LAT pulsar catalog     
             lat=self.lcatdf
+            psrdf = self.df[self.df.psr].copy()
+            diff = list(set(lat.index).difference(set(psrdf.index)))
+            if len(diff)>0:
+                print 'Missing from model: {}'.format(diff)
             lat['ts'] = self.df[self.df.psr]['ts']
             lat['aprob'] = self.df[self.df.psr]['aprob']
-            lat['ROI_index'] = [Band(12).index(SkyDir(float(ra),float(dec))) for ra,dec in zip(lat.RAJ2000,lat.DEJ2000)]
+            lat['ROI_index'] = [Band(12).index(SkyDir(float(ra),float(dec))
+                                              ) for ra,dec in zip(lat.RAJ2000,lat.DEJ2000)]
 
-            lat['skydir'] = [SkyDir(float(ra),float(dec)) for ra,dec in zip(lat.RAJ2000, lat.DEJ2000)]
+            lat['skydir'] = [SkyDir(float(ra),float(dec))
+                             for ra,dec in zip(lat.RAJ2000, lat.DEJ2000)]
 
             lat['sourcedir'] = self.df.skydir[self.df.psr]
-            lat['delta'] = [np.degrees(s.difference(t)) if not type(t)==float else np.nan for s,t in zip(lat.skydir,lat.sourcedir)]
+            lat['delta'] = [np.degrees(s.difference(t)) if not type(t)==float else np.nan
+                            for s,t in zip(lat.skydir,lat.sourcedir)]
+            psrdf.loc[:,'r95']= 2.5*np.sqrt(np.array(psrdf.a.values**2+psrdf.b.values**2,float))
+            lat.loc[:,'r95'] = psrdf.r95
 
             far = lat.delta>0.25
             dc2names =set(self.lcatdf.index)
@@ -253,25 +277,47 @@ class Pulsars(sourceinfo.SourceInfo):
             missing |= np.array((lat.aprob==0) & (lat.ts<1000) )
             
             missing_names = lat.index[missing]
-            cols = 'RAJ2000 DEJ2000 ts delta ROI_index'.split()
-            self.latsel=latsel = pd.DataFrame( np.array([lat[id][missing] for id in cols]), index=cols, columns=missing_names).T
+            cols = 'RAJ2000 DEJ2000 ts delta r95 ROI_index'.split()
+            self.latsel=latsel = pd.DataFrame( np.array([lat[id][missing]
+                                    for id in cols]), index=cols, columns=missing_names).T
 
-            self.atable = '<h4>Compare with LAT pulsar catalog: {}</h4>'.format( self.version)
+            self.atable = '<h4>Compare with LAT pulsar catalog id: {}</h4>'.format( self.version)
 
-            label_info= dict(ts='TS,Test Statistic', delta='delta,distance to fit position (deg)',
+            label_info= dict(ts='TS,Test Statistic from full fit', 
+                             RAJ2000='RAJ2000, position of pulsar',
+                             delta='delta,distance to source position (deg)',
+                             r95='R95,95 radius (deg), NaN if not calculated',
                                 ROI_index='ROI Index,Index of the ROI, a HEALPix ring index')
-            self.atable += html_table(latsel.query('ts<10'), label_info,
-                        heading = '<p>LAT catalog entries with weak or no fit (TS<10)',
+            # Table of weak or not fit
+            weak_df = latsel.query('ts<10')
+            self.atable += html_table(weak_df, label_info,
+                        heading = '<p>{} LAT catalog entries with weak or no fit (TS<10); positioned at Pulsar'.format(len(weak_df)),
                         name=self.plotfolder+'/weak', maxlines=20,
                         float_format=(FloatFormat(2)))
             self.atable += html_table(latsel.query('ts>10'), label_info,
-                        heading = '<p>LAT catalog entries with nearby, but unassociated source ',
+                        heading = '<p>LAT catalog entries with nearby, but currently unassociated source',
                         name=self.plotfolder+'/far', maxlines=20,
                         float_format=(FloatFormat(2)))
+            self.missing_table='All LAT pulsasrs are in the current model!'
+            self.dfm = dfm = self.latsel[pd.isna(self.latsel.ts)].copy()
+            if len(dfm>0):
+                dfm.pop('ts'); dfm.pop('delta')
+                dfm.rename(columns=dict(RAJ2000='ra', DEJ2000='dec'), inplace=True)
+                close =tools.find_close(dfm, self.df)
+                dfm.loc[:,'distance'] = close.distance
+                dfm.loc[:,'pointlike_name'] = close.otherid
+                self.missing_df = dfm
+                
+                self.missing_table = html_table(dfm, label_info, 
+                        heading='<p>LAT catalog entries not in this model',
+                        name=self.plotfolder+'/missing',
+                        float_format=(FloatFormat(2)))
+            
 
     def bigfile_associations(self, test=False):
         """BigFile Associations
-        Construct a list of non LAT pulsar point sources associated with the BigFile pulsar list (Version %(bigfile_version)s).
+        Construct a list of non LAT pulsar point sources associated with the BigFile pulsar list 
+        (Version %(bigfile_version)s).
         <br>Exclude sources with poor localization (quality>5) and BigFile pulsars in clusters. 
         <ul>
         <li>%(bigfile_hi_table)s </li>
@@ -282,7 +328,8 @@ class Pulsars(sourceinfo.SourceInfo):
         class BigFile(object):
             """"manage look up in the BigFile"""
             def __init__(self):
-                ff = sorted(glob.glob(os.path.expandvars('$FERMI/catalog/srcid/cat/Pulsars_BigFile_*.fits')))
+                ff = sorted(glob.glob(
+                    os.path.expandvars('$FERMI/catalog/srcid/cat/Pulsars_BigFile_*.fits')))
                 t= fits.open(ff[-1])
                 print 'Read file {}'.format(ff[-1])
                 self.version = ff[-1].split('_')[-1].split('.')[0]
@@ -303,7 +350,8 @@ class Pulsars(sourceinfo.SourceInfo):
                 return self.d.iloc[i]
         
         not_psr = np.array([not n.startswith('PSR') for n in self.df.index],bool)
-        psrx = np.array([x=='pulsar_big' for x in self.df.acat], bool) & not_psr & (self.df.locqual<5)
+        self.psrx = psrx = np.array(
+            [x=='pulsar_big' for x in self.df.acat], bool) & not_psr & (self.df.locqual<5)
 
         print '%d sources associated with BigFile pulsar list' % sum(psrx)
         pt = self.df[psrx]['aprob aname aang ts glat glon pivot_energy curvature locqual'.split()]
@@ -311,7 +359,14 @@ class Pulsars(sourceinfo.SourceInfo):
         # look it up in BigFile, add other stuff
         self.bf = bf=BigFile()
         self.bigfile_version = bf.version
-        anames = self.df[psrx].aname
+        
+        # check to see if current BigFile may be different from the one used to make association
+        lost = np.isin(pt.aname, bf.names, invert=True)
+        if sum(lost)>0:
+            print 'Current BigFile missing entries : {}'.format(list(pt.aname[lost].index))
+            pt = pt.iloc[~lost]
+        
+        anames = pt.aname
         
         pt['jname'] = jname = [bf(n).PSRJ for n in anames]
         # test for the jname not ending in numeric character
@@ -327,8 +382,9 @@ class Pulsars(sourceinfo.SourceInfo):
         pt['P0'] =   ['{:.3f}'.format(bf(n).P0) for n in anames]
         
         # make file table
-        ptx = pt[not_incluster]['jname glat glon edot P0 history Hmax ts aprob aang curvature pivot_energy locqual'.split()]
-        hilat = abs(pt.glat)>5
+        ptx = pt[not_incluster][
+            'jname glat glon edot P0 history Hmax ts aprob aang curvature pivot_energy locqual'.split()]
+        hilat = abs(ptx.glat)>5
         if len(ptx)>0:
             colinfo=dict(name='Source Name,click for link to SED',
                     jname='Pulsar name,J version',
@@ -378,20 +434,44 @@ class Pulsars(sourceinfo.SourceInfo):
         ax.grid()
         return fig
 
-    def new_candidates(self):
+    def candidates_in_4fgl(self):
+        """Potential pulsar candidates in 4FGL
+        Make a list of sources with the selections
+        <ul>
+            <li in 4FGL
+            <li>not associated or a LAT Pulsar
+         </ul>
+        The plots are for sources from this list, showing the effects of subsequent cuts:
+        <ol>
+            <li>0.15 < curvature < 0.75
+            <li>pivot energy < 3 GeV
+            <li>R95 < 15 arcmin
+        </ol>
+          
+        <h4>%(candidate_table_in_4fgl)s</h4>
+        <br>A csv file of the above, including both cuts is <a href="../../%(pulsar_candidate_filename_in_4fgl)s?download=true">here</a>
+        """
+
+        return self.new_candidates(in_4fgl=True)
+
+
+    def new_candidates(self, in_4fgl=False):
         """Potential pulsar candidates
         Make a list of sources with the selections
         <ul>
             <li>not associated
             <li>not in 4FGL or withinn 0.5 deg of one 
-            <li>nearest 4FGL source is extended or has TS>1000
-            <ii>
-        </ul>
-        The plots are of this list, showing
-        effect of curvature selection.
-        
+            <li>nearest 4FGL source is extended or has TS<1000
+         </ul>
+        The plots are for sources from this list, showing the effects of subsequent cuts:
+        <ol>
+            <li>0.15 < curvature < 0.75
+            <li>pivot energy < 3 GeV
+            <li>R95 < 15 arcmin
+        </ol>
+          
         <h4>%(candidate_table)s</h4>
-        <br>A csv file of the above is <a href="../../%(pulsar_candidate_filename)s?download=true">here</a>
+        <br>A csv file of the above, including both cuts is <a href="../../%(pulsar_candidate_filename)s?download=true">here</a>
         """
         # add info about 4FGL
         self.check4FGL(pattern=None)
@@ -399,35 +479,82 @@ class Pulsars(sourceinfo.SourceInfo):
         df=self.df
 
         # select subset not in 4FGL and not associated and not close to a 4FGL source and that the closest is very strong
-        dfx = df.query('fl8y==False & aprob<0.8 & locqual<8 & distance>0.5 & other_extended==False & otherts<1000')
+        if in_4fgl: 
+            # alternative: only in 4FGL
+            dfx = df.query('fl8y==True & aprob<0.8 & locqual<8 & psr==False')
+            dfx['sname']= self.gdf.loc[dfx.index, 'sname']
+        else:
+            dfx = df.query('fl8y==False & aprob<0.8 & locqual<8 & distance>0.5 & other_extended==False & otherts<1000')
         # values to display
-        ts = dfx.ts.astype(float).clip(0,1000)
+        ts = dfx.ts.astype(float).clip(0,250)
         singlat = np.sin(np.radians(dfx.glat.astype(float)))
         curvature= dfx.curvature.astype(float).clip(0,1)
+        r95_arcmin = dfx.r95.astype(float)*60
+        pivot = dfx.pivot_energy.astype(float)
+        eflux =dfx.eflux.astype(float)
         #curvature selection
-        cut = np.logical_and(curvature<0.75, curvature>0.15)
+        curvature_cut = np.logical_and(curvature<0.75, curvature>0.15)
+        r95_cut = r95_arcmin<15 #7.9
+        pivot_cut = pivot<3e3
+        cuts=[]; 
+        cut_labels=['curvature', 'pivot', 'R95']
+        cuts.append( curvature_cut)
+        cuts.append(cuts[-1] & pivot_cut)
+        cuts.append(cuts[-1] & r95_cut)
 
-        label_info = dict()
-        dfcut = dfx[cut]['ra dec ts glat pindex curvature locqual distance otherid otherts'.split()].sort_values(by='ts', ascending=False)
-        self.candidate_table = html_table(dfcut, label_info,
-            heading = '<b>Table of {} pointlike sources not in 4FGL, not assocated and with curvature selection</b>'.format(len(dfcut)),
-            name=self.plotfolder+'/candidates', maxlines=20,
-            float_format=(FloatFormat(2)))
-        self.pulsar_candidate_filename=self.plotfolder+'/pulsar_candidates.csv'
-        dfcut.to_csv(self.pulsar_candidate_filename)
+        label_info = dict(name='Source Name,click for link to SED',
+                          pindex='Spectral index, at pivot energy',
+                          pivot_energy='pivot energy,',
+                          curvature='curvature,at the pivot energy',
+                          r95='localization,in degrees, 95%',
+                          distance='distance,in degrees to nearest 4FGL source',
+                          otherid='4FGL nick name,',
+                          otherts='4FGL TS,',
+                          locqual='locqual,localization quality',
+                         )                    
+        dfcut = dfx[cuts[-1]][
+            '''ra dec ts glat pindex pivot_energy curvature locqual r95 pars errs
+                distance otherid otherts'''.split()].sort_values(by='ts', ascending=False)
 
-        self.df_pulsar_candidates = dfcut #for interactive
+        if in_4fgl:
+            dfcut['sname'] =  self.gdf.loc[dfcut.index, 'sname']
+            self.df_pulsar_candidates_in_4fgl = dfcut 
+            self.candidate_table_in_4fgl = html_table(dfcut, label_info,
+                heading = '''<b>Table of {} pointlike sources not in {}, 
+                    not assocated and with curvature selection</b>'''.format(self.fgl_name,len(dfcut)),
+                name=self.plotfolder+'/candidates_in_4fgl', maxlines=20,
+                float_format=(FloatFormat(2)))
+            self.pulsar_candidate_filename_in_4fgl=self.plotfolder+'/pulsar_candidates_in_4fgl.csv'
+            dfcut.to_csv(self.pulsar_candidate_filename_in_4fgl)
+        else:
+            self.df_pulsar_candidates = dfcut 
+            self.candidate_table = html_table(dfcut, label_info,
+                heading = '''<b>Table of {} pointlike sources not in {}, 
+                    not assocated and with curvature selection</b>'''.format(self.fgl_name,len(dfcut)),
+                name=self.plotfolder+'/candidates', maxlines=20,
+                float_format=(FloatFormat(2)))
+            self.pulsar_candidate_filename = self.plotfolder+ '/pulsar_candidates.csv'
+            dfcut.to_csv(self.pulsar_candidate_filename)
 
-        fig, (ax1,ax2, ax3) = plt.subplots(1,3, figsize=(12,5))
+        fig, axx = plt.subplots(2,3, figsize=(12,10))
+        ax1,ax2,ax3,ax4,ax5,ax6 = axx.flatten()
         hkw = dict(histtype='step', lw=2)
         def doit(ax, x, bins, xlabel, xlog=False):
-            ax.hist(x, bins, **hkw)    
-            ax.hist(x[cut], bins, label='curvature cut', **hkw)
+            ax.hist(x, bins, label='', **hkw)  
+            for i,cut in enumerate(cuts):
+                ax.hist(x[cut], bins, label=cut_labels[i], **hkw)
             ax.set(xlabel=xlabel, xscale='log' if xlog else 'linear')
+            ax.legend()
 
-        doit(ax2, ts, np.logspace(1,3,51), 'TS', xlog=True)
-        doit(ax3, singlat, np.linspace(-1,1,41), 'sin(b)')
         doit(ax1, curvature, np.linspace(0,1,21), 'curvature')
+        doit(ax2, pivot, np.logspace(np.log10(200),np.log10(2e4),21), 'pivot energy', xlog=True)
+        doit(ax3, r95_arcmin, np.linspace(0,25,26),'R95 (arcmin)')
+        doit(ax4, ts, np.logspace(1,np.log10(250),25), 'TS', xlog=True)
+        doit(ax5, singlat, np.linspace(-1,1,21), 'sin(b)')
+        doit(ax6, eflux, np.logspace(np.log10(3e-2),np.log10(3), 21), 'energy flux', xlog=True) 
+
+        fig.tight_layout()
+        fig.set_facecolor('white')
         return fig
 
 
@@ -438,7 +565,53 @@ class Pulsars(sourceinfo.SourceInfo):
             self.pulsar_check,
             self.bigfile_associations,
             self.new_candidates,
+            self.candidates_in_4fgl,
         ])
+
+def simple_plot(name, rec):
+    from uw.like2 import plotting
+    
+    class XSource(object):
+        def __init__(self, name,rec):
+            self.name= name
+            self.spectral_model = rec['model']
+            self.sedrec = rec['sedrec']
+    x = XSource(name, rec)
+    ps = plotting.sed.Plot(x)
+    fig, ax = plt.subplots(figsize=(2.5,2.5))
+    ps(axes = ax, axis=(100,3.2e4, 0.05, 4))
+    ax.set(xlabel='', ylabel='', title='', xticklabels=[], yticklabels=[]);
+    ax.text(0.3, 0.85, name,transform=ax.transAxes, fontsize=16 );
+    return fig
+
+def save_pulsar_candidate_stuff(refresh=True, ):
+    import pickle  
+
+    def sed_info(name):
+        roi= int(self.df.loc[name]['roiname'][-4:]); roi
+        pkl = self.pkls[roi]
+        rec = pkl['sources'][name]; 
+        fig = simple_plot(name, rec)
+
+        plt.savefig('plots/pulsars/candidates/{}.jpg'.format(name))
+        plt.close(fig)
+        return dict(model = rec['model'], sedrec= rec['sedrec'])
+    
+    # Grab spectral model object, sed info from ROI pickles 
+    if not os.path.isdir('plots/pulsars/candidates'):
+        os.makedirs('plots/pulsars/candidates')
+    self=Pulsars(refresh=refresh)
+    self.new_candidates()
+    self.candidates_in_4fgl()
+
+    all_sed_info = {}
+    for pdf in [self.df_pulsar_candidates, self.df_pulsar_candidates_in_4fgl]:
+        for name in pdf.index:
+            all_sed_info[name] = sed_info(name)
+
+    with open('pulsar_candidate_sed_info.pkl', 'wr') as out:
+        pickle.dump(all_sed_info, out)
+
 
 #=================================================================================================
 #  Old stuff, may be useful

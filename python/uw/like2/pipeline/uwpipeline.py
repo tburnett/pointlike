@@ -159,7 +159,7 @@ def check_names(stage, proc):
                 raise Exception('stage "%s" not recognized: expect one of %s' %(t, sorted(keys)))
 
 def main( args ):
-    if args.stage=='restart':
+    if args.stage[0]=='restart':
         ps = stream.PipelineStream()
         ps.restart(test=False)
         return
@@ -201,5 +201,6 @@ if __name__=='__main__':
     parser.add_argument('--next', default=None, help='Command to run after successful completion')
     #parser.add_argument('--processor',  help='specify the processor' )
     args = parser.parse_args()
+    #print args
     main(args)
     

@@ -159,6 +159,9 @@ class CountPlots(analysis_base.AnalysisBase):
 
         sinfo[p].update(delta_min=0, delta_max=0, delta_sum=0,gt10=0, nroi=1728)
         for s  in model_streams[1:]:
+            #####
+            if sinfo[s]['stage']=='fitdiffuseupdate': continue
+            ####
             nroi = sum(hd[s]!=0)
             for k in range(1728):
                 if hd[s][k]==0:

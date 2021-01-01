@@ -31,7 +31,7 @@ def add_galactic(tt, add=True):
 class FL8YComparison(sourceinfo.SourceInfo):
     """Comparison with 4FGL
             This analysis uses the %(cat)s catalog file %(fhl_file)s.
-    <p>This is using the %(skymodel)s model, with the same 8-year data set, 
+    <p>This is using the %(skymodel)s model, with its 12-year data set, using 
     with Source class events. There are some differences:
     <ul>
     <li>The zenith cut is 100 degrees, for all energies, while %(cat)s varies from 90 to 110.

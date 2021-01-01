@@ -40,6 +40,7 @@ __all__=[
  # 'pgwave',
  #'ptstable',
  #'pulsarseedcheck',
+'pulsars', 
  #'roi_info',
  'residuals',
  'seedcheck',

@@ -25,17 +25,17 @@ stagenames = dict(
     # List of possible stages, with proc to run, parameters for it,  summary string
     # list is recognized by check_converge, which will use next, if it exists, for the fillong
     create      =  StageBatchJob( dict(update_positions_flag=True),     sum='environment menu counts',  help='Create a new skymodel, follow with update_full',),
-    create_only =  StageBatchJob( dict(update_positions_flag=True),     sum='environment menu counts',  help='Create a new skymodel, follow with update_only',),
+    create_only =  StageBatchJob( dict(update_positions_flag=True),     sum='environment menu counts', next='update_only', help='Create a new skymodel, follow with update_only',),
     update_full =  StageBatchJob( dict(),     sum='config counts',            help='refit, full update' ),
     update      =  StageBatchJob( dict( dampen=0.5,), sum='config counts',    help='refit, half update' ),
-    update_zero =  StageBatchJob( dict( dampen=0.0,), sum='config counts sourceinfo',    help='no fit, keep parameters static' ),
+    update_zero =  StageBatchJob( dict( dampen=0.0001,), sum='config counts sourceinfo',    help='fit, but keep parameters static' ),
     curvature   =  StageBatchJob( dict( curvature_flag=True),  sum='counts sourceinfo',help='fit curvature parameters', next='update_full'),
     update_pivot=  StageBatchJob( dict( repivot_flag=True),  sum='counts sourceinfo',help='update pivot', ), 
     update_only =  StageBatchJob( dict(),                   sum='config counts sourceinfo', help='update, no additional stage', ), 
     update_positions
                 =  StageBatchJob( dict(update_positions_flag=True, dampen=1.0), sum='sourceinfo', help='update positions and refit', ),
     update_associations
-                =  StageBatchJob( dict(associate_flag=True, dampen=1.0), sum='associations', help='update associations', ),
+                =  StageBatchJob( dict(associate_flag=True, dampen=1.0), sum='associations pulsars', help='update associations and pulsars', ),
     #update_norms=  StageBatchJob( dict( norms_only=True), sum='menu config counts', help='update that fits the normalization factors only'),
     
     monthlyPGW    =  StageBatchJob( dict( fix_spectra_flag=True), sum='menu config counts', next='addseeds_PGW', help='create a monthly model; followed by adding PGW seeds for that month'),
@@ -58,7 +58,7 @@ stagenames = dict(
     #     help='start update sequence with all seeds'),    
     # #update_seeds=  StageBatchJob( dict(add_seeds_flag=True), sum='config counts', help='start update sequence with new seed soruces'),
     finish      =  StageBatchJob( dict(finish=True),     sum='sourceinfo localization associations environment counts', 
-                                help='localize, associations, sedfigs',job_list='$POINTLIKE_DIR/infrastructure/finish_jobs.txt' ),
+                                help='localize, associations,pulsars, sedfigs',job_list='$POINTLIKE_DIR/infrastructure/finish_jobs.txt' ),
     finish_month=  StageBatchJob( dict(finish=True),     sum='transientinfo', help='plots for monthly transients', ),
     residuals   =  StageBatchJob( dict(residual_flag=True), sum='residuals',  help='generate residual tables for all sources', ),
     counts      =  StageBatchJob( dict(counts_dir='counts_dir', dampen=0, outdir='.'), sum='counts',  help='generate counts info, plots', ), 
@@ -84,10 +84,13 @@ stagenames = dict(
 
     # fitisotropic=  StageBatchJob( dict(diffuse_key='iso'), sum='isotropic',  help='isotropic diffuse fits'),
     # update_galactic=StageBatchJob( dict(diffuse_key='gal'), sum='counts',  help='special diffuse fits'),
-    # fitgalactic =  StageBatchJob( dict(diffuse_key='gal'), sum='counts environment',  help='gal diffuse fit, then fit'),
+    fitgalacticupdate =  StageBatchJob( dict(diffuse_key='gal_update'), sum='diffuse_fits counts environment',next='update_only',  help='gal diffuse fit, update'),
     fitdiffuse =   StageBatchJob( dict(diffuse_key='both'), sum='diffuse_fits', help='fit diffuse as gal + iso'),
     fitdiffuseupdate =   StageBatchJob( dict(diffuse_key='both_update'), sum='diffuse_fits counts environment', 
                             next='update_only', help='fit diffuse as gal + iso and update'),
+    fitdiffuseonly =   StageBatchJob( dict(diffuse_key='both_update'), sum='diffuse_fits counts environment', 
+                             help='fit diffuse as gal + iso and update, no next update'),
+
 
     psccheck     = StageBatchJob(dict(psc_flag=True), sum='gtlikecomparison', help='compare with a "psc"-format gtlike catalog'),
     sourcefinding=StageBatchJob( dict(table_keys=['all'], dampen=0, tables_nside=256),  job_list='$POINTLIKE_DIR/infrastructure/joblist8.txt', 

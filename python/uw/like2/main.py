@@ -424,8 +424,7 @@ class ROI(views.LikelihoodViews):
         if xlim is not None: t.axes[0].set(xlim=xlim)
         if ylim is not None: t.axes[0].set(ylim=ylim)
         return t
-
-        
+     
     @tools.decorate_with(plotting.tsmap.plot)
     def plot_tsmap(self, source_name=None, tsplot=False, factor=1.0, refit=False, **kwargs):
         """ create a TS map showing the source localization
@@ -475,7 +474,6 @@ class ROI(views.LikelihoodViews):
         """print a formated table of SED info"""
         sedfuns.print_sed(self, source_name)
         
-        
     def find_associations(self, source_name=None, classes='all_but_gammas', srcid='srcid', quiet=True):
         """ find associations, using srcid object.
         If source was not localized, run that first
@@ -501,11 +499,9 @@ class ROI(views.LikelihoodViews):
             source = self.sources.find_source(source_name)
             find_one(source)
             
-                
     def to_healpix(self, pickle_dir, dampen, **kwargs):
         to_healpix.pickle_dump(self, pickle_dir, dampen=dampen, **kwargs)
         
-    
     def to_xml(self, filename, **kwargs):
         """Save the current ROI to an XML file. 
         Note that it will include info on the diffuse components not consistent with gtlike
@@ -569,7 +565,52 @@ class ROI(views.LikelihoodViews):
         else:
             fit_one(self.get_source(source_name))
         
+    def correlation_info(self, corr_min=0.2, **fit_kw):
+        """
+        Return a list of pairs of correlated sources, assuming all parameters have been fit
+        """
+        
+        pnames = self.sources.parameter_names
 
+        isel = filter( lambda i: pnames[i].endswith('_Norm'), range(len(pnames)) )
+
+        cov = self.fit_info['covariance']; 
+        if cov is None:
+            return []
+        diag = np.sqrt(cov.diagonal())[isel]
+        corr = cov[np.ix_(isel,isel)]/np.outer(diag,diag)
+
+        sn = map(lambda x: x.split('_')[0], pnames[isel]); sn
+        corr_src = []
+        for i in range(len(diag)):
+            for j,x in enumerate(corr[i+1:,i]):
+                if abs(x)>corr_min:
+                    corr_src.append([sn[i], sn[i+j+1], -int(100*x)])
+        return corr_src
+
+    def refit_as_pulsar(self, source_name=None, update=True):
+        s = self.get_source(source_name)
+        sname = s.name
+       
+        if s.model.name=='PLSuperExpCutoff':
+            print 'Sourcee {} already fit by PLSuperExpCutoff'.format(sname)
+            return
+        print 'Refitting source {} with PLSuperExpCutoff...'.format(sname)
+        old_ts = s.ts
+        saved_model = self.set_model('PLSuperExpCutoff(1e-11, 1.0, 800., 0.7)', sname)
+        m=s.model
+        self.thaw('Cutoff', sname)
+        self.fit(sname); print 'TS: {:.0f} -> {:.0f}'.format(old_ts, self.TS())
+        self.freeze('Cutoff', sname) 
+        
+        e0, pivot = m.e0, m.pivot_energy()
+        if pivot200: pivot =200
+        print 'Setting pivot from {:.1f} to {:.1f}'.format(e0, pivot)
+        m.set_e0(pivot)
+        if not update:
+            self.set_model(saved_model)
+        else:
+            print 'Updated model'
 
 class MultiROI(ROI):
     """ROI subclass that will perform a fixed analysis on multiple ROIs

@@ -107,9 +107,16 @@ class BandLike(object):
         self.free = free
         self.free_sources = self.bandsources[self.free]
         self.active_mask = map(lambda s: s.active, self.bandsources)
+        
         #compile counts and count masks only for pointsources that are "active", i.e. not too far away or weak
-        fixed_sources = self.bandsources[~self.free & self.active_mask]
-        self.counts = self.fixed_counts = sum([b.counts for b in fixed_sources])
+        if len(self.bandsources)>0:
+
+            fixed_sources = self.bandsources[~self.free & self.active_mask]
+            self.counts = self.fixed_counts = sum([b.counts for b in fixed_sources])
+        else:
+            fixed_sources = []
+            self.counts = self.fixed_counts = 0
+
         if not self.band.has_pixels: 
             self.model_pixels=self.fixed_pixels = self.weights= np.array([])
             return
@@ -312,7 +319,8 @@ class BandLikeList(list):
         while len(self)>0:
             self.pop()
         for band in roi_bands:
-            bl = BandLike(band, self.sources, self.sources.free, self) 
+            free = self.sources.free if self.sources else []
+            bl = BandLike(band, self.sources, free, self) 
             self.append( bl)
             
         self.set_selected(self)# set selected for a subset?
@@ -555,14 +563,14 @@ class BandLikeList(list):
         source_name: None or string
             if None, use currently selected source
         """
-        sunmoon_free = self.get_source('SunMoon').model.free[:]
+        # sunmoon_free = self.get_source('SunMoon').model.free[:]
         if parname.find('_')>0 and source_name is None:
             source_name, parname = parname.split('_')
         source = self.get_source(source_name)
         source.thaw(parname)
         #print 'Thawed: {}_{}'.format(source_name, parname)
         # make sure SunMoon does not change - don't understand how this seems to happen!
-        self.get_source('SunMoon').model.free=[False]
+        # self.get_source('SunMoon').model.free=[False]
         self.reinitialize()
 
     def select_band(self, energy, et):

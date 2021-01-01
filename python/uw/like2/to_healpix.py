@@ -22,6 +22,7 @@ def pickle_dump(roi,  pickle_dir, dampen, ts_min=0, **kwargs):
     output['skydir']  = roi.roi_dir
     output['parameters'] = roi.sources.parameters[:] 
     output['gradient'] = np.asarray(roi.gradient(), np.float32)
+    output['correlations'] = getattr(roi,'correlations', None)
 
     # add a record to the history read in originally
     history = roi.sources.history if hasattr(roi.sources, 'history') else []

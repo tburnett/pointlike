@@ -286,7 +286,8 @@ class CreateFermiFITS(object):
             fits.BinTableHDU.from_columns(self.make_ebounds(), name='EnergyBounds'),
             ], 
             ) 
-        self.hdulist.writeto(open(filename,'w'))
+        # failed?? self.hdulist.writeto(open(filename,'w'))
+        self.hdulist.writeto(filename)
         print 'Created FITS file {} with {} sources'.format(filename, len(names))
 
  
@@ -358,7 +359,7 @@ class GLL_PSC2(object):
             else:
                 raise Exception('could not resolve filename or catalog name {}'.format(filename))
         self.version = filename.split('_')[-1].split('.')[0]
-        data =fits.open(filename)[1].data
+        self.data = data =fits.open(filename)[1].data
         # expect to find these: ignore the rest
 
         colnames = """\
@@ -431,6 +432,7 @@ class GLL_PSC2(object):
 
             return dict(sname=ce.Source_Name.strip(), 
                         ra=ce.RAJ2000, dec=ce.DEJ2000, 
+                        stype=stype,
                         model=model, 
                         extended=ce.Extended,
                         ts=ce.Test_Statistic,

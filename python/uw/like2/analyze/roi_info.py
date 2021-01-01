@@ -20,7 +20,6 @@ class ROIinfo(analysis_base.AnalysisBase):
             information about the consistency of the model for this component.
         """
  
-    require=  'pickle.zip'
     def setup(self, **kwargs):
         self.plotfolder='rois'
         self.title='ROI summary'
@@ -28,8 +27,12 @@ class ROIinfo(analysis_base.AnalysisBase):
         self.plots_kw={}
       
         filename = 'rois.pickle'
+        pickle_file = 'pickle.zip'
+        if not os.path.exists(pickle_file):
+            pickle_file =   os.path.join(self.config['input_model']['path'],pickle_file)
+        assert os.path.exists(pickle_file), 'No pickle file? {}'.format(pickle_file)
         refresh = kwargs.pop('refresh', not os.path.exists(filename) 
-                    or os.path.getmtime(filename)<os.path.getmtime('pickle.zip') )
+                    or os.path.getmtime(filename)<os.path.getmtime(pickle_file) )
         if refresh:
             files, pkls = self.load_pickles('pickle')
             assert len(files)==1728, 'Expected to find 1728 files, found %d' % len(files)
@@ -49,6 +52,8 @@ class ROIinfo(analysis_base.AnalysisBase):
             self.df = pd.DataFrame(rdict).transpose()
             self.df.to_pickle(filename)
             print 'saved %s' % filename
+            # diffuse counts only as a dict
+            self.save_diffuse_info()
         else:
             print 'loading %s' % filename
             self.df = pd.read_pickle(filename)
@@ -71,6 +76,29 @@ class ROIinfo(analysis_base.AnalysisBase):
         self.energy=self.df.ix[0]['counts']['energies']
         self.funcs = []
         self.fnames=[]
+                
+    def save_diffuse_info(self, outfile='diffuse_info.pkl'):
+        """ save a file with counts and normalization per ROI
+        """
+
+        dfc = self.df['counts glat glon diffuse_normalization'.split()]
+        dfc.to_pickle(outfile)
+
+        print 'Saved file {}'.format(outfile)
+
+    def save_counts(self, outfile='diffuse_counts.pkl'):
+        """ save a file with the predicted counts per ROI
+        """
+        # ff, pp = self.load_pickles()
+
+        # gal_counts = np.array([ pkl['counts']['models'][:2][0][1][:8] for pkl in pp])
+        # iso_counts = np.array([ pkl['counts']['models'][:2][1][1][:8] for pkl in pp])
+        gal_counts = np.array( [c['models'][0][1][:8] for c in self.df.counts])
+        iso_counts = np.array( [c['models'][1][1][:8] for c in self.df.counts])
+        with open(outfile, 'wb')  as out:
+            pickle.dump( dict(gal=gal_counts, iso= iso_counts), out)
+
+        print 'Saved file {}'.format(outfile)
         
     def default_plots(self):
         # the set of defaults plots to generate: subclasses can add

@@ -101,6 +101,13 @@ class IrfManager(object):
         """Return a BandExposure obect for the given energy and event_type."""
         assert self._exposure is not None
         et = self._parse_event_type(event_type)
+        assert et in self._exposure, 'Event type index, {}, not in {}'.format(et, self._exposure.keys())
+        # if et>= len(self._exposure):
+        #     k, et =et,  1- (et-2)/2 # 
+        #     if getattr(self, '_warned', False):
+        #         print 'WARNING: using front or back exposure for a PSF: {}->{}'.format(k, et)
+        #         self._warned=True
+
         return self._exposure[et].band_exposure(energy)
 
     def _parse_event_type(self,event_type):

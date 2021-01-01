@@ -129,6 +129,8 @@ class BandSet(list):
             len(self), self[0].emin, self[-1].emax, self.roi_index)
         if self.has_data:
             ret += ', %d pixels, %d events' % (self.pixels, self.events)
+        else:
+            ret += ', NO DATA!'
         return ret
             
     def find(self, emin, event_type):

@@ -257,8 +257,8 @@ class MakeCat(object):
         
         # make the FITS stuff, adding the *_Band columns and the EnergyBounds table
         table = pyfits.BinTableHDU.from_columns(self.cols + self.fcat.make_bands(z.index))
-        table.header['ERPOSFAC']= '%.3f'% localization_systematic[0], 'Systematic factor applied to conf95'
-        table.header['ERPOSABS']= '%.4f'% localization_systematic[1], 'systematic value (deg) added in quadrature conf95'
+        table.header['ERPOSFAC']= localization_systematic[0], 'Systematic factor applied to conf95'
+        table.header['ERPOSABS']= localization_systematic[1], 'systematic value (deg) added in quadrature conf95'
         table.name = 'LAT_Point_Source_Catalog' 
         if os.path.exists(outfile):
             os.remove(outfile)

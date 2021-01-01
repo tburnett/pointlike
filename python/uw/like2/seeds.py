@@ -388,33 +388,49 @@ def create_seedfiles(self, seed_folder='seeds', update=False, max_pixels=30000, 
     return v  
 #############################################################
 # code to deal with accidentally removed sources
-def add_old_sources(roi, filename='../uw8608/lost.csv'):
-    """add sources from a csv file
+# def add_old_sources(roi, filename='../uw8608/lost.csv'):
+#     """add sources from a csv file
+#     """
+#     lost = pd.read_csv(filename, index_col=0)
+#     print 'read file {} with {} sources'.format(filename, len(lost))
+#     sel = lost[lost.roiname==roi.name]
+#     if len(sel)>0:
+#         print 'adding sources {}'.format(list(sel.index))
+#     else:
+#         print 'No sources found in this ROI'
+#         return False
+#     ok = False
+#     for name, x in sel.iterrows():
+#         psr = name.startswith('PSR')
+#         if x.ts<25: continue
+#         try:
+#             roi.add_source(name=x.name, skydir=(x.ra,x.dec),
+#                         model='LogParabola({},{},{},{})'.format(x.flux, x.pindex, x.index2,x.e0))
+#             roi.fit(x.name); 
+#             ts = roi.TS()
+#             roi.freeze('beta')
+#             if ts<25:
+#                 print 'Not good fit: removing'
+#                 roi.del_source(x.name)
+#             else:
+#                 ok = True
+#                 roi.get_sed(update=True)# add SED
+#         except Exception, msg:
+#             print 'Failed to add : {}'.format(msg)
+#     return ok
+def add_old_sources(roi, filename = 'missing_dict.pkl'):
+    """ Version to add sources from old model, missing in this one
     """
-    lost = pd.read_csv(filename, index_col=0)
-    print 'read file {} with {} sources'.format(filename, len(lost))
-    sel = lost[lost.roiname==roi.name]
-    if len(sel)>0:
-        print 'adding sources {}'.format(list(sel.index))
-    else:
-        print 'No sources found in this ROI'
-        return False
-    ok = False
-    for name, x in sel.iterrows():
-        psr = name.startswith('PSR')
-        if x.ts<25: continue
+    with open(filename) as inp:
+        toaddlist = pickle.load(inp)
+        assert len(toaddlist.keys())==1728
+    roi_index = int(roi.name[5:])
+    toadd = toaddlist[roi_index]
+    for name, info in toadd.items():
+        print 'adding {}'.format(name)
         try:
-            roi.add_source(name=x.name, skydir=(x.ra,x.dec),
-                        model='LogParabola({},{},{},{})'.format(x.flux, x.pindex, x.index2,x.e0))
-            roi.fit(x.name); 
-            ts = roi.TS()
-            roi.freeze('beta')
-            if ts<25:
-                print 'Not good fit: removing'
-                roi.del_source(x.name)
-            else:
-                ok = True
-                roi.get_sed(update=True)# add SED
-        except Exception, msg:
-            print 'Failed to add : {}'.format(msg)
-    return ok
+            s =roi.add_source(name=name, skydir=info['skydir'], model=info['model'])
+            roi.profile(s.name, set_normalization=True)
+        except:
+            pass
+    return True

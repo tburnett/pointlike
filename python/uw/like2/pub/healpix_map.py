@@ -350,11 +350,11 @@ class HEALPixFITS(list):
                    self.make_table(),           # this table
                ]
 
-    def write(self, outfile, clobber=True):
+    def write(self, outfile, overwrite=True):
         hdus = self.make_hdus()
         if os.path.exists(outfile):
             os.remove(outfile)
-        pyfits.HDUList(hdus).writeto(outfile,clobber=clobber)
+        pyfits.HDUList(hdus).writeto(outfile,overwrite=overwrite)
         print '\nwrote FITS file to %s' % outfile
 
 class HEALPixSkymap():

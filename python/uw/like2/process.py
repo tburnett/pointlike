@@ -24,6 +24,7 @@ class Process(main.MultiROI):
         ('localize_kw',   {},    'keywords for localization'),
         ('repivot_flag',  False, 'repivot the sources'),
         ('curvature_flag',  False, 'check betas, refit if needed'),
+        ('correlation_flag',True, 'Add correlation info'),
         ('ts_beta_zero',  None,   'set to threshold for converting LP<->PL'),
         ('ts_min',        5,      'Minimum TS for saving after an iteration'),
         ('dampen',        1.0,   'damping factor: set <1 to dampen, 0 to not fit'),
@@ -109,14 +110,19 @@ class Process(main.MultiROI):
             if self.diffuse_key=='iso':
                 fit_isotropic(self)
                 return
-            elif self.diffuse_key=='gal':
-                if not fit_galactic(self):return
+            elif self.diffuse_key=='gal_update':
+                fit_diffuse.fitter(self, select=[0], update=True)
+                self.select()
+                write_pickle(self)
+                return
             elif self.diffuse_key=='both':
                 fit_diffuse.fitter(self)
                 return
             elif self.diffuse_key=='both_update':
                 fit_diffuse.fitter(self, update=True)
-                # do not return: perform a fit, then update
+                self.select()
+                write_pickle(self)
+                return
             else:
                 raise Exception('Unexpected key: {}'.format(self.diffuse_key))
 
@@ -187,10 +193,18 @@ class Process(main.MultiROI):
         else:
             fit_kw = self.fit_kw
             try:
+
                 if self.norms_only:
                     print 'Fitting parameter names ending in "Norm"'
                     roi.fit('_Norm',  **fit_kw)
+                
                 roi.fit(select=self.selected_pars, update_by=dampen, **fit_kw)
+                
+                if self.correlation_flag:
+                    print '-------------- create a list of correlations ----------'; sys.stdout.flush()
+                    self.correlations = self.correlation_info( **fit_kw)
+                    print self.correlations
+                
                 if self.fix_spectra_flag:
                     # Check for bad errors, 
                     diag = np.asarray(self.hessian().diagonal())[0]
@@ -228,7 +242,7 @@ class Process(main.MultiROI):
             print '------------ creating seds, figures ---------------'; sys.stdout.flush()
             skymodel_name = os.path.split(os.getcwd())[-1]
             roi.plot_sed('all', sedfig_dir=sedfig_dir, suffix='_sed_%s'%skymodel_name, )
-        
+
         if self.profile_flag:
             print '------creating profile entries for all free sources'; sys.stdout.flush()
             self.profile('all')
@@ -265,8 +279,6 @@ class Process(main.MultiROI):
         if outdir is not None:  
             write_pickle(self)
   
-    
-   
     def repivot(self, fit_sources=None, min_ts = 10, max_beta=1.0, emin=200., emax=100000.,
              dampen=1.0, tolerance=0.10, test=False, select=None):
         """ invoked  if repivot flag set;
@@ -336,8 +348,6 @@ class Process(main.MultiROI):
         self.fit(ignore_exception=ignore_exception)
         return True 
 
-
-        
     def residuals(self, tol=0.3):
         print 'Creating tables of residuals'
         if not os.path.exists('residuals'):
@@ -518,14 +528,14 @@ def fit_isotropic(roi, nbands=8, folder='isotropic_fit'):
 class FitGalactic(object):
     """Manage the galactic correction fits
     """
-    def __init__(self, roi, nbands=8, folder=None, upper_limit=5.0):
+    def __init__(self, roi, nbands=8, folder=None, quiet=True, **kwargs):
         """ fit only the galactic normalization"""
         if folder is not None and not os.path.exists(folder):
             os.mkdir(folder)
         self.roi=roi
-        cx = self.fit( nbands)
+        cx = self.fit( nbands, **kwargs)
         self.fitpars= cx[:,:2] 
-        x,s,cf,cb = cx.T
+        x,s,ct = cx.T
         self.chisq= sum(((x-1)/s)**2)
   
         if folder is not None:
@@ -533,26 +543,30 @@ class FitGalactic(object):
             pickle.dump(cx, open(filename, 'w'))
             print 'wrote file {}'.format(filename)
 
-    def fit(self, nbands=8): 
+    def fit(self, nbands=8, **kwargs): 
         roi = self.roi
-        gal_model = roi.get_source('ring').model
+        sname = roi.sources[0].name
+        gal_model = roi.get_model(sname)
         roi.thaw('Norm')
         gal_norm = gal_model[0]
 
         roi.reinitialize()
         cx = []
-
-        for eband in range(nbands):
-            counts = [t[0].counts.round() for t in roi[2*eband:2*eband+2]]
-            print '*** Energy Band {}: gal counts {}'.format( eband, counts)
-            roi.select(eband)
-            gal_model[0]=gal_norm
-            roi.fit([0], ignore_exception=True); 
-            cx.append((gal_model[0], gal_model.error(0), counts[0], counts[1]))
-        cx = np.array(cx) # convert to array, shape (nbands, 4)
-        # re-select all bands, freeze galactic again    
-        roi.select()
-        roi.freeze('Norm')
+        ee = roi.energies
+        try:
+            for i, eband in enumerate(ee[:nbands]):
+                roi.select(elow=eband, ehigh=ee[i+1]*1.1)
+                counts = [b[0].counts.round() for b in roi.selected]
+                if kwargs.get('summarize', True):
+                    print '*** Energy Band {:.0f}: gal counts {}'.format( eband, counts)
+                gal_model[0]=gal_norm
+                roi.fit([0], ignore_exception=True, **kwargs); 
+                cx.append((gal_model[0], gal_model.error(0), sum(counts)))
+            cx = np.array(cx) # convert to array, shape (nbands, 4)
+            # re-select all bands, freeze galactic again    
+        finally:
+            roi.select()
+            roi.freeze('Norm')
         return np.array(cx) 
 
 
@@ -684,8 +698,10 @@ def fit_galactic(roi, nbands=8, folder=None, upper_limit=5.0):
 def write_pickle(roi):
     pickle_dir = os.path.join(roi.outdir, 'pickle')
     if not os.path.exists(pickle_dir): os.makedirs(pickle_dir)
+    counts = roi.get_count_dict()
+    assert len(counts['energies'])>8, 'Odd failure!'
     roi.to_healpix( pickle_dir, dampen=1.0, 
-        counts=roi.get_count_dict(),
+        counts=counts,
         stream=os.environ.get('PIPELINE_STREAMPATH', 'interactive'),
         ts_min = roi.ts_min,
         )

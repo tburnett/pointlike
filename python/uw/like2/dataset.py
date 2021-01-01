@@ -174,12 +174,14 @@ class DataSet(dataman.DataSpec):
             #binfile=kwargs.pop('binfile',None), 
             ).__dict__
         dataspec.update(
-                ft1=dataspec.pop('ft1files',None), 
+                ft1=None, ####### no longer used here?  dataspec.pop('ft1files',None), 
                 ft2=dataspec.pop('ft2files',None),
                 )
 
         # replace binfile if requested (for simuation, at least)
+ 
         new_binfile = kwargs.pop('binfile', None)
+
         dataspec.update(kwargs)
  
         if new_binfile is not None:
