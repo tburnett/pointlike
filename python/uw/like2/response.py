@@ -275,6 +275,10 @@ class DiffuseResponse(Response):
                     % (self.__class__.__name__, self.source.name,  dfun.__class__.__name__)
                 corr_file = os.path.expandvars(dfun.kw['correction'])
                 self.corr = DiffuseCorrection(corr_file)(roi_index, self.energy) 
+            elif 'corr' in dfun.kw:
+                # for single roi: the corrections wired into the yaml declaration
+                energy_index = np.searchsorted( np.hstack([np.logspace(2,4,9), [1e7]]), self.energy)-1
+                self.corr = dfun.kw['corr'][min(energy_index,7)]
             else: 
                 self.corr=1.0
             

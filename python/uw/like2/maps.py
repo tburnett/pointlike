@@ -12,6 +12,7 @@ from uw.like import Models
 from . import (sources, sedfuns, ) 
 from uw.utilities import image
 from uw.like2.pipeline import check_ts
+import healpy
 
 # the default nside
 nside=512
@@ -144,62 +145,6 @@ class ModelCountMaps(object):
                 print '\t--> {}'.format(outfile)
             else:
                 print '\t (not saved)'
-
-# (Moved to simulation)
-# class BandCounts(object):
-#     """Manage results of the Model counts
-#     """
-#     def __init__(self, band_index, path='model_counts', reload=False):
-#         """Assume in a skymodel folder, containg a model_counts subfolder
-#         """
-#         self.bi = band_index
-#         self.path=path+'/{:02d}'.format(band_index)
-#         nside_list = ModelCountMaps.nside_array
-#         self.nside = nside_list[band_index]
-#         self.filename = self.path+'/combined.pickle'
-#         if os.path.exists(self.filename) and not reload:
-#             self.load()
-#         else:
-#             self.combine()
-#             self.dump()
-
-#     def combine(self):
-#         index_table = make_index_table(12, self.nside)
-#         d = dict()
-#         ff = sorted(glob.glob(self.path+'/HP12*.pickle'.format(self.bi)));
-#         assert len(ff)==1728, 'only found {} pickle files in {}'.format(len(ff), self.path)
-#         for i,f in enumerate(ff):
-#             ids = index_table[i]
-#             try:
-#                 values = pickle.load(open(f))
-#                 assert sum(np.isnan(values))==0, 'Found Nan values'
-#             except Exception, msg:
-#                 print 'Failed to load file {}: {}'.format(f, msg)
-#                 raise
-#             assert len(ids)==len(values), 'oops: {} ids, but {} values'.format(len(ids), len(values))
-#             d.update(zip(ids, values))
-#         self.counts= np.array(d.values(),np.float32)
-
-#     def plot(self, **kwargs):
-#         from uw.like2.pub import healpix_map as hpm
-#         name = 'band{:02d}'.format(self.bi)
-#         hpm.HParray(name, self.counts).plot(log=True, title=name, **kwargs)
-
-#     def dump(self):
-#         pickle.dump(self.counts, open(self.filename, 'w'))
-#         print 'Saved file {}'.format(self.filename)
-
-#     def load(self):
-#         self.counts = pickle.load(open(self.filename))
-        
-#     def simulate(self):
-#         """Return sparsified Poisson simulation
-#         """
-#         sim =np.random.poisson(self.counts)
-#         nonzero = sim>0
-#         ids=np.arange(len(sim))[nonzero]
-#         counts = sim[nonzero]
-#         return np.array([ids, counts], np.int32)
 
 
 class KdeMap(object):
@@ -339,11 +284,25 @@ class ROItables(object):
                 (ResidualTS,'ts',  dict(photon_index=2.0),) , 
                 (KdeMap,    'kde', dict()),
             If skyfunction is a string, evaluate it 
+
+        if kwargs has disc_info: assume (l,b, r), and get all pixels in that disk
+        otherwise gets only the pixels in the standard nside=12 ROI
     """
     
     def __init__(self, outdir, nside, roi_nside=12, **kwargs):
-        self.index_table = make_index_table(roi_nside, nside)
         self.subdirfun = Band(nside).dir
+        disc_info = kwargs.pop('disc_info', ())
+
+        # allow arbitraty disk, rather than just within a ROI active boundary
+        if disc_info:
+            l, b, r = disc_info
+            vec = healpy.dir2vec(l,b, lonlat=True)
+            index_list = healpy.query_disc(nside=nside, vec=vec, radius=np.radians(r),nest=False)
+            self.pos_list = [self.subdirfun(int(i)) for i in index_list]
+        else:
+            self.index_table = make_index_table(roi_nside, nside)
+
+ 
         self.skyfuns = kwargs.pop('skyfuns', 
               ( (ResidualTS, 'ts', dict(photon_index=2.3),) , 
                 (KdeMap,     'kde', dict()),
@@ -365,8 +324,11 @@ class ROItables(object):
         if hasattr(skyfun,'reset'): skyfun.reset() 
   
     def __call__(self, roi):
-        index = int(roi.name[5:])
-        pos_list = [self.subdirfun(int(i)) for i in self.index_table[index]]
+        pos_list = getattr(self, 'pos_list', [])
+        if not pos_list:
+            # not created in ctor: make if from the name
+            index = int(roi.name[5:])
+            pos_list = [self.subdirfun(int(i)) for i in self.index_table[index]]
           
         for i,fun in enumerate(self.skyfuns):
             skyfun = fun[0] if type(fun[0])!=types.StringType else eval(fun[0])
@@ -553,7 +515,7 @@ def make_index_table(nside=12, subnside=nside, usefile=True):
 class MultiMap(object):
     
     def __init__(self, names=['hard','flat','soft', 'peaked', 'psr'], 
-                 outdir='.', tname='all', nside=nside, roi_nside=12, fill=np.nan):
+                 outdir='.', tname='all', nside=nside, roi_nside=12, fill=np.nan, disc=()):
         """ combine the tables generarated at each ROI
 
         names : names to give the columns, 
@@ -561,6 +523,7 @@ class MultiMap(object):
         tname : name of the table, default 'all'
         fill  : scalar, defaul NaN
             Use to fill missing tables, if any (warning issued)
+        disc  : tuple of (l,b,r) to specify a disc 
         """
         self.names=names
         folder = '%s_table_%d'% (tname, nside)
@@ -577,11 +540,20 @@ class MultiMap(object):
         assert nf>0, 'no pickle files found in %s' % os.path.join(outdir, folder)
         if nf<1728: print 'warning: missing %d files in folder %s_table; will fill with %s' % ((1728-nf), tname,fill)
 
+
         mvec = np.zeros((12*nside**2,len(names)))
         mvec.fill(fill)
         pklist = [pickle.load(opener(f)) for f in files]
-        i12 = [int(f[-11:-7]) for f in files]
-        index_table = make_index_table(roi_nside, nside)
+        if disc :
+            # special for a single disc -- kluge a special inndex_table
+            l, b, r = disc
+            vec = healpy.dir2vec(l,b, lonlat=True)
+            index_table = [healpy.query_disc(nside=nside, vec=vec, radius=np.radians(r),nest=False)]
+            i12 = [0]
+        else:
+            index_table = make_index_table(roi_nside, nside)
+            i12 = [int(f[-11:-7]) for f in files]
+
         for index, pk in zip(i12,pklist):
             indeces = index_table[index]
             for i,v in enumerate(pk):

@@ -218,8 +218,8 @@ class Configuration(dict):
                 if not os.path.exists(t):
                     raise Exception('No source model file found in %s or %s' %(self.modeldir, t) )
                 self.modeldir=t
-        if not os.path.exists(os.path.join(self.modeldir, self.modelname)):
-            print 'WARNING: pickle.zip not found in %s: no model to load' % self.modeldir
+        if not os.path.exists(os.path.join(self.modeldir, self.modelname)) and not self.quiet:
+            print 'pickle.zip not found in %s: no model to load' % self.modeldir
         elif not self.quiet:
             print 'Will load healpix sources from %s/%s' % (self.modeldir,self.modelname)
     

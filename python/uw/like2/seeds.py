@@ -176,7 +176,7 @@ def add_seeds(roi, seedkey='all', config=None,
 
         # one iteration of pivot change
         iter = 2
-        if iter>0 and roi.repivot([src], min_ts=tsmin,select=src.name ):
+        if iter>0 and hasattr(roi,'repivot') and roi.repivot([src], min_ts=tsmin,select=src.name ):
             iter -=1
 
         # and a localization: remove if fails or poor
@@ -328,7 +328,7 @@ def merge_seed_files(tables, dist_deg=1.0):
     return out
 
 def create_seedfiles(self, seed_folder='seeds', update=False, max_pixels=30000, merge_tolerance=1.0, 
-        nside=512, tsmin=14):
+        nside=512, tsmin=14, ):
     """
     Version of create_seeds used for a maps.MultiMap object
     """
@@ -348,7 +348,8 @@ def create_seedfiles(self, seed_folder='seeds', update=False, max_pixels=30000, 
     elif modelname.startswith('month'):
         seedroot='M'+modelname[-2:]
     else:
-        raise Exception('Unrecognized model name, {}. '.format(modelname))
+        seedroot=modelname
+        #raise Exception('Unrecognized model name, {}. '.format(modelname))
 
     outfile ='{}/seeds_all.csv'.format(seed_folder) 
     if os.path.exists(outfile) and not update:
@@ -359,7 +360,7 @@ def create_seedfiles(self, seed_folder='seeds', update=False, max_pixels=30000, 
         print '{}: ...'.format(key),
         if os.path.exists(seedfile) and not update:
             print 'Seedfile {} exists: skipping make_seeds step...'.format(seedfile)
-            table = pd.read_table(seedfile, index_col=0)
+            table = pd.read_csv(seedfile, index_col=0)
             table['key']=key
             print 'found {} seeds'.format(len(table))
         else:
@@ -370,7 +371,7 @@ def create_seedfiles(self, seed_folder='seeds', update=False, max_pixels=30000, 
             if nseeds>0:
                 #read back, set skydir column, add to list of tables
                 print '\tWrote file {} with {} seeds'.format(seedfile, nseeds)
-                table = pd.read_table(seedfile, index_col=0)
+                table = pd.read_csv(seedfile, index_col=0, sep='\t')
                 table['skydir'] = map(SkyDir, table.ra, table.dec)
                 table['key'] = key
             else:

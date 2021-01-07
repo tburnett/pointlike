@@ -326,7 +326,7 @@ def stacked_plots(roi, counts_dir=None, fignum=6, title=None, **kwargs):
     fraction = 0.8
 
     axes[0].set_position([left, bottom+(1-fraction)*height, width, fraction*height])
-    axes[1].set_position([left, bottom, width, (1-fraction)*height])
+    axes[1].set_position([left, bottom, width, (0.999-fraction)*height])
     plot_counts(roi, axes=axes, outfile=None, **kwargs)
     
     plt.rcParams['axes.linewidth'] = oldlw

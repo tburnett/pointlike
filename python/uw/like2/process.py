@@ -528,8 +528,12 @@ def fit_isotropic(roi, nbands=8, folder='isotropic_fit'):
 class FitGalactic(object):
     """Manage the galactic correction fits
     """
-    def __init__(self, roi, nbands=8, folder=None, quiet=True, **kwargs):
-        """ fit only the galactic normalization"""
+    def __init__(self, roi, nbands=8, folder=None, **kwargs):
+        """ fit only the galactic normalization
+        - nbands : number of energies. will include all bands at the same energy
+        - folder : if set, save pickled file with the roi name
+        - kwargs : passed to roi.fit
+        """
         if folder is not None and not os.path.exists(folder):
             os.mkdir(folder)
         self.roi=roi
@@ -555,7 +559,7 @@ class FitGalactic(object):
         ee = roi.energies
         try:
             for i, eband in enumerate(ee[:nbands]):
-                roi.select(elow=eband, ehigh=ee[i+1]*1.1)
+                roi.select(elow=eband*0.99, ehigh=eband*1.01)
                 counts = [b[0].counts.round() for b in roi.selected]
                 if kwargs.get('summarize', True):
                     print '*** Energy Band {:.0f}: gal counts {}'.format( eband, counts)
