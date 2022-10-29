@@ -9,7 +9,7 @@ from skymaps import SkyDir, Band
 from . import ( diffuse, maps,)
 
 
-def fitter(roi, nbands=8, select=[0,1], folder='diffuse_fit_maps', 
+def fitter(roi, nbands=8, gal_only=True, folder='diffuse_fit_maps', 
     corr_min=-0.95, update=False, batch=True):
     """
     Perform independent fits to the gal, iso for each of the first nbands bands.
@@ -21,9 +21,15 @@ def fitter(roi, nbands=8, select=[0,1], folder='diffuse_fit_maps',
     """
 
     # thaw gal and iso
-    roi.thaw('Norm', 'ring')
-    roi.thaw('Scale', 'isotrop')
-    roi.get_model('isotrop').bounds[0]=[np.log10(0.5), np.log10(10.0)] # set limits 
+    dnames = dict(gal='gal', iso='iso') if 'gal' in roi.sources.source_names\
+        else dict(gal='ring', iso='isotrop')
+
+    select = [0] if gal_only else [0,1]
+
+    roi.thaw('Norm', dnames['gal'])
+    if not gal_only:
+        roi.thaw('Scale', dnames['iso'])
+        roi.get_model(dnames['iso']).bounds[0]=[np.log10(0.5), np.log10(10.0)] # set limits 
     roi.reinitialize()
     
     # do the fitting
@@ -37,9 +43,9 @@ def fitter(roi, nbands=8, select=[0,1], folder='diffuse_fit_maps',
         roi.select(ie); 
         energy =int(roi.energies[0]) 
         print '----- E={} {} -----'.format(energy, select)
-        roi.fit( select, setpars={0:0, 1:0}, ignore_exception=True)
+        roi.fit( select,  ignore_exception=True) #,setpars={0:1, 1:1},
         cov = roi.fit_info['covariance']
-        if len(select)>1 and (cov is None or len(cov)<2 or cov[0,0]<0 or corr(cov)<corr_min):
+        if not gal_only and (cov is None or len(cov)<2 or cov[0,0]<0 or corr(cov)<corr_min):
             #fail, probably since too correlated, or large correlation. So fit only iso
             roi.fit([1], setpars={0:0, 1:0}, ignore_exception=True)
             cov=np.array([ [0, roi.fit_info['covariance'][0]] , [0,0] ])
@@ -48,13 +54,14 @@ def fitter(roi, nbands=8, select=[0,1], folder='diffuse_fit_maps',
         dpars.append( roi.sources.parameters.get_parameters()[:2])
         covs.append(cov)
         quals.append(roi.fit_info['qual'])
-    roi.freeze('Norm', 'ring', 1.0)
-    roi.freeze('Scale', 'isotrop', 1.0)
+    roi.freeze('Norm', dnames['gal'], 1.0)
+    if not gal_only: roi.freeze('Scale', dnames['iso'], 1.0)
     roi.select() # restore
 
     
     # set to external pars
-    df = pd.DataFrame(np.power(10,np.array(dpars)), columns='gal iso'.split())
+    # Warning
+    df = pd.DataFrame(np.power(10,np.array(dpars)[:,0]), columns=['gal'] if gal_only else 'gal iso'.split())
     df['cov'] = covs
     df['qual'] = quals
     df.index=energies
@@ -82,8 +89,8 @@ def fitter(roi, nbands=8, select=[0,1], folder='diffuse_fit_maps',
     
     if update:
         # check keys: if set, update, otherwise store fit value
-        gal_key = roi.config.diffuse['ring'].get('key', '')=='gal'
-        iso_key = roi.config.diffuse['ring'].get('key', '')=='iso'
+        gal_key = roi.config.diffuse[dnames['gal']].get('key', '')=='gal'
+        iso_key = roi.config.diffuse[dnames['gal']].get('key', '')=='iso'
         # update correction factors, reload all response objects
         dn=diffuse.normalization
         
@@ -94,7 +101,7 @@ def fitter(roi, nbands=8, select=[0,1], folder='diffuse_fit_maps',
         if iso_key:
             dn['iso']['front'] *= df.iso.values
             dn['iso']['back'] *= df.iso.values
-        else:
+        elif 'iso' in dn and not gal_only:
             dn['iso']['front'] = df.iso.values
             dn['iso']['back']  = df.iso.values
 

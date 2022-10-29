@@ -597,6 +597,9 @@ class FL8YComparison(sourceinfo.SourceInfo):
   
         print 'Outliers (above TS={}): {} negative, {} positive'.format(tsmin, sum(neg), sum(pos))
         try:
+            ptb = q[pos & ~psr]
+            ptb.to_csv('poor_gtlike.csv')
+            print 'Wrote poor_gtlike.csv'
             self.deltax2_positive=html_table(q[pos & ~psr].sort_values(by='delta', ascending=False), 
                 name=self.plotfolder+'/deltax2_positive', 
                 heading='<h4>pointlike better: (non-pulsars) {}</h4>'.format(sum(pos & ~psr)),

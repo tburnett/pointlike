@@ -30,9 +30,18 @@ class BandLike(object):
         """
         keyword_options.process(self, kwargs)
         # make a list of the Response objects
-        self.bandsources = np.array(
-                map(lambda s: s.response(band, quiet=self.quiet, roi=roi), sources)
-        )
+        #print 'BandLike ****  make a list of the Response objects for {}'.format(band)
+
+ 
+        # self.bandsources = np.array(
+        #         map(lambda s: s.response(band, quiet=self.quiet, roi=roi), sources)
+        # )
+        bs = []
+        for s in sources:
+            resp = s.response(band, quiet=self.quiet, roi=roi)
+            bs.append(resp)
+        self.bandsources = np.array(bs)
+
         self.active_mask = map(lambda s: s.active, self.bandsources)
 
         self.band = band 
@@ -171,9 +180,9 @@ class BandLike(object):
         """ gradient of the likelihood with resepect to the free parameters
         """
         if len(self.free_sources)==0: return np.array([])
-        grads = []
-        for m in self.free_sources:
-            grads.append(m.grad(self.weights, self.exposure_factor))
+        # grads = []
+        # for m in self.free_sources:
+        #     grads.append(m.grad(self.weights, self.exposure_factor))
             
         return self.unweight * np.concatenate(
                 [m.grad(self.weights, self.exposure_factor) for m in self.free_sources]
@@ -290,6 +299,40 @@ class BandLike(object):
         ret= np.sum(self.fluxes(skydir)) 
         assert not np.isnan(ret), 'NaN value detected at skydir {}'.format(skydir)
         return ret
+
+    def skymap(self, source=None, attr=None, ax=None, label=None, 
+               log=False, colorbar=True, scale=2400, shrink=1.0):
+        """Make a skymap from a BandLike object.
+        centered on the ROI.
+        - source -- the name of a souece, or None for band properties
+        - attr -- attribute name: default 'data' if source is None else 'pixel_values'
+        
+        """
+        import matplotlib.pyplot as plt
+        roi = self.roi
+        center = roi.roi_dir
+        nside = self.band.cband.nside()
+
+        sdirs = self.band.wsdl
+        lon = np.array([x.l() for x in sdirs])
+        sinlat = np.sin(np.radians([x.b() for x in sdirs]))
+        lon[lon>180]-=360
+        
+        if attr is None:
+            attr = 'data' if source is None else 'pixel_values'
+        values = getattr(self, attr) if source is None else getattr(self[source],attr)
+        if log: values = np.log10(values)
+            
+        fig, ax = plt.subplots(figsize=(6,5)) if ax is None else (ax.figure, ax)
+        
+        scat = ax.scatter(lon,sinlat,marker='D', s=scale/np.sqrt(nside), c=values, cmap='jet');
+        ax.grid(alpha=0.5)
+        if label is None:
+            label = '{} {}'.format(source, attr) if source is not None else attr
+        ax.set(aspect=180., xlim=(lon.max()+1,lon.min()-1), 
+            title=label, xlabel='$l$', ylabel='$\sin(b)$');
+        if colorbar:
+            cb = plt.colorbar(scat, shrink=shrink)
     
          
 class BandLikeList(list):

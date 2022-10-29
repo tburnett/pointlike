@@ -10,7 +10,7 @@ from astropy.io import fits as pyfits
 from astropy.utils.exceptions import AstropyUserWarning
 
 from skymaps import SkyDir, Band
-from . import sourceinfo
+from . import sourceinfo, fermi_catalog
 from . analysis_base import FloatFormat, html_table
 
 
@@ -482,7 +482,8 @@ class Associations(sourceinfo.SourceInfo):
         return fig
 
     def unassociated_soft(self, query='isextended==False & pindex>2.2 & curvature<0.05 & psr==False',
-            selection='aprob<0.5 & eflux100>4e-12 & a<0.1 & locqual<5'):
+            selection='aprob<0.5 & eflux100>3e-12 & a<0.1 & locqual<5', 
+            flux_min=3e-12):
         """Unassociated soft sources
 
         This is an analysis of a set of unassociated soft (index>2.2) sources that have a concentration 
@@ -499,7 +500,7 @@ class Associations(sourceinfo.SourceInfo):
         self.softie_query=query
         self.unid_query=selection
         q = self.indf.query(query)\
-            ['ra dec ts pindex glat glon eflux curvature aprob eflux100 a b ang locqual'.split()]
+            ['name ra dec ts pindex glat glon eflux curvature aprob eflux100 a b ang locqual'.split()]
         q['singlat'] = np.sin(np.radians(np.array(q.glat,float)))
 
         fig,axx=plt.subplots(2,3, figsize=(12,8),
@@ -515,12 +516,12 @@ class Associations(sourceinfo.SourceInfo):
             ax.set(xlim=xlim, xlabel='Spectral index',
                 ylim=ylim, ylabel=r'$Energy\ FLux \times\ 10^{12}$', yscale='log')
             ax.legend();
-            ax.axhline(4.0, color='gray')
+            ax.axhline(flux_min*1e12, color='gray')
 
         scatxy(axx[0,0], 'aprob>0.5')
         scatxy(axx[1,0])
 
-        idquery = 'aprob>0.5 & eflux100>4e-12'
+        idquery = 'aprob>0.5 & eflux100>{}'.format(flux_min)
         def hist1(ax, query=idquery):
             df = q.query(query)
             ax.hist(df.singlat, bins=np.linspace(-1,1,21), histtype='step', lw=2)
@@ -554,6 +555,9 @@ class Associations(sourceinfo.SourceInfo):
         # add a column with circular radius in arc min
         dfu['r95'] = np.sqrt(np.array(dfu.a*dfu.b,float))*2.45*60
 
+        # add 4FGL info: 
+        fermi_catalog.check4FGL(dfu, pattern=self.config['gllcat'])
+
         dfu.to_csv(self.softie_filename)
         self.softies=dfu
         print 'Wrote list of sources to {}'.format(self.softie_filename)
@@ -567,7 +571,7 @@ class Associations(sourceinfo.SourceInfo):
 
         return fig
 
-    def softie_geometry(self, vmax=8, vmin=0, bmax=10, vcut=2, loncut=90):
+    def softie_geometry(self, vmax=8, vmin=0, bmax=10, vcut=None, loncut=90):
         """Softie geometry
 
         For a point source population, the square root of the flux should be inversely proportional 

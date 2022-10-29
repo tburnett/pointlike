@@ -248,7 +248,7 @@ class ROI(views.LikelihoodViews):
             self.fit_info = dict(
                 loglike = fv.log_like(),
                 pars = fv.parameters[:], 
-                covariance  = fv.covariance,
+                covariance  = getattr(fv, 'covariance',None),
                 mask_indeces = np.arange(len(fv.mask))[fv.mask],
                 qual = fv.delta_loglike(),)
         return 
@@ -414,6 +414,8 @@ class ROI(views.LikelihoodViews):
     def plot_counts(self, relto='isotrop', plot_pulls=False, 
             size=(4,6), xlim=None, ylim=(0.1, 200), **kwargs):
         figsize = size
+
+        if relto not in self.sources.source_names: relto='iso' 
 
         t= plotting.counts.stacked_plots(self, plot_pulls=plot_pulls, relto=relto, **kwargs)
         if figsize is not None:

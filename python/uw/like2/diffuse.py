@@ -200,6 +200,9 @@ class HealpixCube(DiffuseBase):
             self.setupfile( filename)
             
     def load(self):
+        if self.loaded: return
+        print 'Loading HealpixCube file {}'.format( self.filename )
+        assert not self.loaded, 'Should have skipped'
         try:
             try:
                 self.hdulist = hdus = fits.open(self.fullfilename)
@@ -303,6 +306,7 @@ class HealpixCube(DiffuseBase):
     @property        
     def array(self):
         """return data as a 2-D Numpy array"""
+        assert False, 'Better not try this?'
         if not self.loaded: self.load()
         data = self.hdulist[1].data
         return np.array([row[0] for row in data])

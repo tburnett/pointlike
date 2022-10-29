@@ -103,18 +103,22 @@ def select_seeds_in_roi(roi, fn='seeds/seeds_all.csv'):
     roi : int or Process instance
         if the latter, look up index from roi direction. direction
     """
-    if type(roi)!=int:
-        roi = Band(12).index(roi.roi_dir)
-    seeds = pd.read_csv(fn, index_col=0)
+    roi_index =  Band(12).index(roi.roi_dir)
+    # if type(roi)!=int:
+    #     roi = Band(12).index(roi.roi_dir)
+    seeds = pd.read_csv(fn, index_col=0)    
     seeds['skydir'] = map(SkyDir, seeds.ra, seeds.dec)
     seeds.index.name = 'name' 
-    sel = np.array(map( Band(12).index, seeds.skydir))==roi
+    if roi.roi_index==-1:
+        # special
+        return seeds
+    sel = np.array(map( Band(12).index, seeds.skydir))==roi_index
     return seeds[sel]
 
-def add_seeds(roi, seedkey='all', config=None,
+def add_seeds(roi, #seedkey='all', #config=None,
             model='PowerLaw(1e-14, 2.2)', 
             associator=None, tsmap_dir='tsmap_fail',
-            tsmin=10, lqmax=20,
+            tsmin=10, lqmax=10,
             update_if_exists=False,
             location_tolerance=0.5,
             pair_tolerance=0.25,
@@ -122,16 +126,34 @@ def add_seeds(roi, seedkey='all', config=None,
     """ add "seeds" from a text file the the current ROI
     
         roi : the ROI object
-        seedkey : string
-            Expect one of 'pgw' or 'ts' for now. Used by read_seedfile to find the list
-
-        associator :
         tsmap_dir
         mints : float
             minimum TS to accept for addition to the model
         lqmax : float
             maximum localization quality for tentative source
     """
+    class TooClose():
+        def __init__(self, roi, tol):
+            self.tol=np.radians(tol)
+            self.local_sd = []
+            # select free point sources to 
+            for s in roi.sources:
+                if s.skydir is None: continue
+                if sum(s.model.free)==0: continue
+                # ??
+                # if s.name.startswith('504'): continue
+                self.local_sd.append(s.skydir)
+        def __call__(self, src):
+            # why did I do this?
+            # d = filter(lambda x: x>0, map(src.skydir.difference, self.local_sd) )
+            d = map(src.skydir.difference, self.local_sd) 
+            if len(d)==0: return False
+            bad =  min(d)< self.tol 
+            if bad:
+                print 'Source {} too close: {:.2f} < {:.2f} deg'.format(src.name,np.degrees(min(d)), np.degrees(self.tol) )          
+            return bad
+
+    too_close = TooClose(roi, location_tolerance)
 
     def add_seed(s):
         # use column 'key' to determine the model to use
@@ -184,10 +206,19 @@ def add_seeds(roi, seedkey='all', config=None,
         quality = src.ellipse[5] if hasattr(src, 'ellipse') and src.ellipse is not None else None
         if quality is None or quality>lqmax:
             print '\tFailed localization, quality {}, maximum allowed {}'.format(quality, lqmax)
-        
+            return False
+        if too_close(src):
+            return False
         return True
     
-    seedfile = kwargs.pop('seedfile', 'seeds/seeds_{}.csv'.format(seedkey))
+    # check for local, then in parent's folder
+    seedfile = 'seeds/seeds_all.csv'
+    if not os.path.isfile(seedfile):
+        seedfile = os.path.join(roi.config['input_model']['path'], seedfile)
+    
+    assert os.path.isfile(seedfile), 'seed file not found localally or in parent'
+    
+    # don't select here
     seedlist = select_seeds_in_roi(roi, seedfile)
     if len(seedlist)==0:
         print 'no seeds in ROI'
@@ -201,6 +232,7 @@ def add_seeds(roi, seedkey='all', config=None,
     for sname,s in seedlist.iterrows():
         print '='*20, sname, 'Initial TS:{:.1f}'.format(s.ts), '='*20
         if not add_seed( s):
+            print '>>>Failed to add source {}'.format(sname)
             roi.del_source(sname)
         else: good +=1
 

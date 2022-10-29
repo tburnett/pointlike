@@ -66,8 +66,8 @@ stagenames = dict(
         sum='hptables', job_list='$POINTLIKE_DIR/infrastructure/joblist8.txt', help='Create a kde map'),
     tables_kde   =  StageBatchJob( dict(table_keys=['kde'], dampen=0), 
         sum='hptables', job_list='$POINTLIKE_DIR/infrastructure/joblist8.txt', help='Create a kde map'),
-    # tables_tsp  =  StageBatchJob( dict(table_keys=['tsp'], dampen=0),
-    #      job_list='$POINTLIKE_DIR/infrastructure/joblist8.txt', help='Create pulsar ts map'),
+    tables_tsp  =  StageBatchJob( dict(table_keys=['tsp'], dampen=0),
+          job_list='$POINTLIKE_DIR/infrastructure/joblist8.txt', help='Create pulsar ts map'),
     # tables_hard  =  StageBatchJob( dict(table_keys=['hard'], dampen=0),
     #      job_list='$POINTLIKE_DIR/infrastructure/joblist8.txt', help='Create hard source TS map'),
     # tables_soft  =  StageBatchJob( dict(table_keys=['soft'], dampen=0), next='addseeds_soft',
@@ -85,11 +85,11 @@ stagenames = dict(
     # fitisotropic=  StageBatchJob( dict(diffuse_key='iso'), sum='isotropic',  help='isotropic diffuse fits'),
     # update_galactic=StageBatchJob( dict(diffuse_key='gal'), sum='counts',  help='special diffuse fits'),
     fitgalacticupdate =  StageBatchJob( dict(diffuse_key='gal_update'), sum='diffuse_fits counts environment',next='update_only',  help='gal diffuse fit, update'),
-    fitdiffuse =   StageBatchJob( dict(diffuse_key='both'), sum='diffuse_fits', help='fit diffuse as gal + iso'),
-    fitdiffuseupdate =   StageBatchJob( dict(diffuse_key='both_update'), sum='diffuse_fits counts environment', 
-                            next='update_only', help='fit diffuse as gal + iso and update'),
-    fitdiffuseonly =   StageBatchJob( dict(diffuse_key='both_update'), sum='diffuse_fits counts environment', 
-                             help='fit diffuse as gal + iso and update, no next update'),
+    # fitdiffuse =   StageBatchJob( dict(diffuse_key='both'), sum='diffuse_fits', help='fit diffuse as gal + iso'),
+    # fitdiffuseupdate =   StageBatchJob( dict(diffuse_key='both_update'), sum='diffuse_fits counts environment', 
+    #                         next='update_only', help='fit diffuse as gal + iso and update'),
+    # fitdiffuseonly =   StageBatchJob( dict(diffuse_key='both_update'), sum='diffuse_fits counts environment', 
+                            #  help='fit diffuse as gal + iso and update, no next update'),
 
 
     psccheck     = StageBatchJob(dict(psc_flag=True), sum='gtlikecomparison', help='compare with a "psc"-format gtlike catalog'),
@@ -100,6 +100,8 @@ stagenames = dict(
     modelcounts3=  StageBatchJob( dict(model_counts=range(18,20) ),  help='model counts 18,19'),
     modelcounts4=  StageBatchJob( dict(model_counts=range(20,26) ),  help='model counts 20-25'),
     #gllcompare =   StageBatchJob( dict(special_flag=True), sum='gtlikecomparison', help='gtlike comparison'),
+
+    makeweights = StageBatchJob( dict(weights_flag=True), help='Generate weight tables'),
 )
 keys = stagenames.keys()
 help = '\nstage name, or sequential stages separated by "y:" names are\n\t' \

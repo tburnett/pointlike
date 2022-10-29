@@ -11,7 +11,7 @@ import skymaps
 from uw.like2.pub import healpix_map as hpm
 import healpy
 from astropy.io import fits
-from .. import associate
+from .. import associate, maps
 from . import sourceinfo, _html
 from .analysis_base import FloatFormat, html_table
 
@@ -39,30 +39,70 @@ class SeedCheck(sourceinfo.SourceInfo):
     <br>and the remaining sources are analyzed here.
     """
 
-    def setup(self, **kw):
-        import seaborn as sns
-        f = glob.glob('hptables_*_512.fits')[0]; 
-        keys = f.split('_')[1:-1];
-        self.keys=keys #= ['ts', 'tsp', 'hard', 'soft'] #keys =stagedict.stagenames['sourcefinding']['pars']['table_keys']
-
-        tt = fits.open('hptables_{}_512.fits'.format('_'.join(keys)))
-        self.tables = tt[1].data;
+    def setup(self, nside=512, **kw):
+        # ??
+        # import seaborn as sns
+        self.nside=nside
+        self.plotfolder='seedcheck' #needed by superclass
         super(SeedCheck, self).setup(**kw) 
-        seedfile = kw.pop('seedfile', 'seeds/seeds_all.csv')
-        self.plotfolder ='seedcheck'
-        self.seeds = pd.read_csv(seedfile, index_col=0)
+
         self.input_model=self.skymodel
-        self.seeds.index.name='name'
-        print 'Loaded {} seeds from file "{}"'.format(len(self.seeds), seedfile)
-        unique, counts = np.unique(self.seeds.key, return_counts=True)
-        print 'seed keys: {}'.format(dict(zip(unique, counts)))
-        self.cut_summary='[Not done yet]'
+        #???
         #self.load()
-        
+
+    def template_info(self):
+        """ Template spectra
+
+        """
+        modelnames = [maps.table_info[key][1]['model'] for key in self.keys];
+        models = [eval('maps.'+modelname) for modelname in modelnames]
+        class Source(object):
+            def __init__(self, name,  model):
+                self.name=name;  self.spectral_model= model
+        templates = map(Source,  self.keys, models) 
+        ee = np.logspace(2,5)
+        fig, ax = plt.subplots(figsize=(6,4))
+        fig.set_facecolor('white')
+        for tm in  templates:
+            f = lambda e: tm.spectral_model(e)*e**2
+            ax.loglog(ee, f(ee)/f(1e3), '-', label=tm.name, lw=2);
+        ax.set(ylim=(2e-3,10),xlim=(ee[0],ee[-1]), ylabel='Energy flux', xlabel='Energy [MeV]', title='Spectral templates')
+        ax.legend(loc='lower left');
+        return fig
+
+    # def seed_plots(self,  bcut=5, subset=None, title=None):
+    #     """ Seed plots
+
+    #     Results of cluster analysis of the residual TS distribution. Analysis of %(n_seeds)d seeds from file 
+    #     <a href="../../%(seedfile)s">%(seedfile)s</a>. 
+    #     <br>Left: size of cluster, in 0.15 degree pixels
+    #     <br>Center: maximum TS in the cluster
+    #     <br>Right: distribution in sin(|b|), showing cut if any.
+    #     """
+    #     z = self.seeddf #self.seeds if subset is None else self.seeds[subset]
+    #     keys = list(set(z.key)); 
+    #     fig,axx= plt.subplots(1,3, figsize=(12,4))
+    #     plt.subplots_adjust(left=0.1)
+    #     bc = np.abs(z.b)<bcut
+    #     histkw=dict(histtype='step', lw=2)
+    #     def all_plot(ax, q, dom, label, log=False):
+    #         for key in keys:
+    #             ax.hist(q[z.key==key].clip(dom[0],dom[-1]),dom, label=key, log=log, **histkw)
+    #         ax.set( xlabel=label, xlim=(dom[0],dom[-1]))
+    #         ax.grid(alpha=0.5)
+    #         ax.legend(prop=dict(size=10, family='monospace'))
+    #         if log: ax.set_ylim(ymin=0.9)
+    #     all_plot(axx[0], z['size'], np.linspace(0.5,10.5,11), 'cluster size')
+    #     all_plot(axx[1], z.ts.clip(15,50), np.linspace(15,50,16), 'TS', log=True)
+    #     all_plot(axx[2], np.sin(np.radians(z.b)), np.linspace(-1,1,21), 'sin(b)')
+    #     axx[2].axvline(0, color='k')
+    #     fig.set(facecolor='white')
+    #     return fig
+
     def tsmaps(self):
         """TS maps for the spectral templates
 
-        Each has 12*512**2 = 3.2M pixels. The following table has the number of pixels above the TS value labeling the column.
+        Each has 12*nside**2 = 3.2M pixels. The following table has the number of pixels above the TS value labeling the column.
         %(tsmap_info)s
         """
         z = dict(); cuts = (10,16,25,100)
@@ -88,6 +128,26 @@ class SeedCheck(sourceinfo.SourceInfo):
         there were no resolvable sources, and the background model was correct.
         The shaded area is the difference.
         """
+        def setup():
+            hpname = 'hptables_*_{}.fits'.format(nside)
+            gg = glob.glob(hpname)
+            if len(gg)==0:
+                print 'File {} not found'
+                return False
+            f = gg[0]; 
+            keys = f.split('_')[1:-1];
+            self.keys=keys #= ['ts', 'tsp', 'hard', 'soft'] #keys =stagedict.stagenames['sourcefinding']['pars']['table_keys']
+
+            tt = fits.open('hptables_{}_{}.fits'.format('_'.join(keys), nside))
+            self.tables = tt[1].data;
+
+            self.seeds.index.name='name'
+            print 'Loaded {} seeds from file "{}"'.format(len(self.seeds), seedfile)
+            unique, counts = np.unique(self.seeds.key, return_counts=True)
+            print 'seed keys: {}'.format(dict(zip(unique, counts)))
+            self.cut_summary='[Not done yet]'
+            return True
+
         def plot_one(seed_key, ax):
             bins = np.linspace(0,tsmax,501)
             tsvec=self.tables[seed_key]
@@ -104,6 +164,9 @@ class SeedCheck(sourceinfo.SourceInfo):
             ax.legend()
             ax.set_title('seed type {}'.format(seed_key), fontsize=14)
             ax.grid(True, alpha=0.5)
+
+        if not setup():
+            return None
 
         fig, axx = plt.subplots(2,3, figsize=(15,12))
         for key,ax in zip(self.keys, axx.flatten()):
@@ -123,6 +186,14 @@ class SeedCheck(sourceinfo.SourceInfo):
         <br>Center: maximum TS in the cluster
         <br>Right: distribution in sin(|b|), showing cut if any.
         """
+        # check for local, then in parent's folder
+        seedfile = 'seeds/seeds_all.csv'
+        if not os.path.isfile(seedfile):
+            seedfile = os.path.join(self.config['input_model']['path'], seedfile)
+    
+        assert os.path.isfile(seedfile), 'seed file not found localally or in parent'
+        self.seeds = pd.read_csv(seedfile, index_col=0)
+
         try:
             z = self.seeds if subset=='all' else self.seeds.query('key=="{}"'.format(subset))
         except Exception, msg:
@@ -136,7 +207,7 @@ class SeedCheck(sourceinfo.SourceInfo):
         def all_plot(ax, q, dom, label):
             ax.hist(q.clip(dom[0],dom[-1]),dom, label=None, **histkw)
             ax.hist(q[bc].values.clip(dom[0],dom[-1]),dom, color='orange', label='|b|<%d'%bcut, **histkw)
-            plt.setp(ax, xlabel=label, xlim=(None,dom[-1]))
+            plt.setp(ax, xlabel=label, xlim=(dom[0],dom[-1]))
             ax.grid()
             ax.legend(prop=dict(size=10))
         all_plot(axx[0], z['size'], np.linspace(0.5,10.5,11), 'cluster size')
@@ -415,6 +486,8 @@ class SeedCheck(sourceinfo.SourceInfo):
     def all_plots(self):
         self.runfigures(
             [
+                self.template_info,
+                self.seed_plots,
                 self.tsmaps,
                 self.pixel_ts_distribution,
                 #self.seed_list, self.seed_cumulative_ts, self.locations, 

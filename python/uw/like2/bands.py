@@ -8,7 +8,9 @@ import healpy
 
 #energybins = np.logspace(2,5.5,15) # default 100 MeV to 3.16 GeV, 4/decade
 energybins = np.logspace(2,6,17) # 100 MeV to 1 TeV, 4/decade
-event_type_min_energy=[100, 100, 1000, 300, 100, 100 ] # minimum energy for given event type
+#event_type_min_energy=[100, 100, 1000, 300, 100, 100 ] # minimum energy for given event type
+# only FRONT below 300 MeV for now
+event_type_min_energy=[100, 300, 1000, 300, 300, 100 ] # minimum energy for given event type
 
 class EnergyBand(object):
     """ Combine three concepts:
@@ -30,21 +32,21 @@ class EnergyBand(object):
         self.energy = energy =  np.sqrt(emin*emax)
         
         # save appropriate psf and exposure
-        
         if config.use_old_irf_code: 
             self.psf=config.psfman(event_type, energy)
             self.exposure = config.exposureman(event_type, energy)
         else:
             self.psf = config.irfs.psf(event_type,energy)
             self.exposure = config.irfs.exposure(event_type,energy)
-        
-        # used by client to integrate a function of energy over exposure
+         # used by client to integrate a function of energy over exposure
         self.integrator = self.exposure.integrator(self.skydir, self.emin, self.emax) 
   
         # these changed if data loaded -- see load_data
         self.pixel_area=0
         self.wsdl = None
         self.pix_counts=[]
+        #print 'psr and exposure OK for {}'.format(self.title)
+
 
     def __repr__(self):
         return '%s.%s: %s' % (self.__module__,self.__class__.__name__, self.title)
@@ -102,7 +104,7 @@ class BandSet(list):
         self.config = config
         emins = self.config['input_model'].get('emin', None)
         if emins is not None:
-            assert len(emins)==2, 'if use PSF types, fix this'
+            assert len(emins)==2 or len(emins)==6, 'expect either 2 or 6'
             # change default 
             event_type_min_energy = emins
         if roi_index is None or roi_index<0:

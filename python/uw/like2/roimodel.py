@@ -57,8 +57,6 @@ class ROImodel(list):
             self.add_sources(config.auxcat)
         self.initialize()
 
-        if len(self.parameters)==0:
-            print 'WARNING: there are no free parameters'
         print self.summary()
         self.selected_source = None
 
@@ -66,7 +64,8 @@ class ROImodel(list):
         ns = len(self)
         n_ext = sum([ s.isextended for s in  self])
         n_glob = sum([s.isglobal for s in self])
-        return '%d total sources: %d extended, %d global' % ( ns, n_ext, n_glob )
+        n_free = len(self.parameters)
+        return '%d total sources: %d extended, %d global, %d free' % ( ns, n_ext, n_glob, n_free )
 
         
     def initialize(self, **kw):

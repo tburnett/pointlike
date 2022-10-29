@@ -17,7 +17,9 @@ from analysis_base import html_table, FloatFormat
 from astropy.table import Table
 
 def bigfile( path='$FERMI/catalog/srcid/cat/Pulsars_BigFile_*.fits'):
-    """"manage look up in the BigFile"""
+    """"Return BigFile as a DataFrame.
+        Index is the PSRJ name
+    """
 
     ff = sorted(glob.glob(os.path.expandvars(path)))
     filename = ff[-1]
@@ -30,6 +32,20 @@ def bigfile( path='$FERMI/catalog/srcid/cat/Pulsars_BigFile_*.fits'):
     df.index = psrnames
     return df
 
+def lat_psr(path='$FERMI/catalog/srcid/cat/obj-pulsar-lat_v1*'):
+    """get the LAT pulsar table as a DataFrame, with index as the name
+    """
+    from astropy.table import Table
+    lcat = glob.glob(os.path.expandvars(path))[-1]
+    filename= os.path.split(lcat)[-1]
+    version = filename.split('.')[0][-4:]
+    print 'Loading LAT pulsar catalog {}'.format(filename)
+    lcatdf = df =Table.read(lcat, hdu=1).to_pandas()
+    lcatdf['msec']=msec = np.array([code.find('m')>-1 for code in df.CHAR_Code ], bool) # was PSR_Code
+    print 'Found {} entries, {} millisecond pulsars'.format(len(df), sum(msec))
+    df.index = map(lambda name: name.strip(), df.Source_Name.values)
+    del df['Source_Name']
+    return df
 
 class Pulsars(sourceinfo.SourceInfo):
     """Pulsar plots and analysis
@@ -47,7 +63,7 @@ class Pulsars(sourceinfo.SourceInfo):
         self.version = filename.split('.')[0][-4:]
         print 'Loading LAT pulsar catalog {}'.format(filename)
         self.lcatdf = df =Table.read(lcat, hdu=1).to_pandas()
-        self.lcatdf['msec']=msec = np.array([code.find('m')>-1 for code in df.PSR_Code ], bool)
+        self.lcatdf['msec']=msec = np.array([code.find('m')>-1 for code in df.CHAR_Code ], bool) # was PSR_Code
         print 'Found {} entries, {} millisecond pulsars'.format(len(df), sum(msec))
         self.latpsr_info = 'From file {}: {} entries, {} millisecond pulsars'.format(filename,len(df), sum(msec))
         df.index= map(lambda name: name.strip(), df.Source_Name.values)
@@ -73,7 +89,7 @@ class Pulsars(sourceinfo.SourceInfo):
 
             if hasattr(self, 'gdf'): return
         
-            # add 4FGL info to dataframe of pointlike soruies
+            # add 4FGL info to dataframe of pointlike sources
             df=self.df
             cindex = [n.replace(' ','') for n in self.df.index]
             systematic = self.config['localization_systematics']
@@ -87,7 +103,11 @@ class Pulsars(sourceinfo.SourceInfo):
                 pattern = '$FERMI/catalog/'+pattern
             self.fgl_name = pattern.split('/')[-2]
             filename = sorted(glob.glob(os.path.expandvars(pattern)))[-1]
-            fcat = fermi_catalog.GLL_PSC2(filename)
+            try:
+                fcat = fermi_catalog.GLL_PSC2(filename)
+            except Exception(msg):
+                print 'Failed to load {}: {}'.format(filename, msg)
+                raise
             self.fhl_file = fcat.filename.split('/')[-1]
             self.gdf = gdf=  fcat.df
             gdf['uw_ts']    = self.df.ts
@@ -383,7 +403,7 @@ class Pulsars(sourceinfo.SourceInfo):
         
         # make file table
         ptx = pt[not_incluster][
-            'jname glat glon edot P0 history Hmax ts aprob aang curvature pivot_energy locqual'.split()]
+            'jname glat glon edot P0 history Hmax ts aprob aang curvature pivot_energy locqual'.split()].sort_index(by='name')
         hilat = abs(ptx.glat)>5
         if len(ptx)>0:
             colinfo=dict(name='Source Name,click for link to SED',

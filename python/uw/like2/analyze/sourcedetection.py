@@ -33,15 +33,15 @@ class SourceDetection(sourceinfo.SourceInfo):
         super(SourceDetection, self).setup(**kwargs)
         self.plotfolder='sourcedetection'
         # get template info from maps
-        self.keys=keys = 'hard soft ts tsp'.split()
-        self.alias_dict=dict(hard='hard', soft='soft', ts='flat', tsp='pulsar')
-        alias_names = map(lambda k: self.alias_dict[k], keys)        
+        self.keys=keys = 'flat hard soft peaked psr '.split()
+        #self.alias_dict=dict(hard='hard', soft='soft', ts='flat', tsp='pulsar')
+        #alias_names = map(lambda k: self.alias_dict[k], keys)        
         modelnames = [maps.table_info[key][1]['model'] for key in keys]; modelnames
         models = [eval('maps.'+modelname) for modelname in modelnames]
         class Source(object):
-            def __init__(self, name, key, model):
-                self.name=name; self.key=key; self.model= model
-        self.templates = map(Source, alias_names, keys, models) 
+            def __init__(self, name,  model):
+                self.name=name;  self.spectral_model= model
+        self.templates = map(Source,  keys, models) 
 
         # add detection information to the seed dataframe
         df = self.df
@@ -65,13 +65,14 @@ class SourceDetection(sourceinfo.SourceInfo):
         """ Template information
 
         """
-        fig,ax= plt.subplots(figsize=(4,4))
-        for src in self.templates:
-            sed.Plot(src)(axes=ax,name='', butterfly=False, fit_kwargs=dict(label=src.name, lw=2))
-        ax.legend(loc='upper left', prop=dict(size=12, family='monospace'), );
-        ax.set_ylim(1e-2, 20);
-        ax.set_xlim(100,1e5)
-        ax.set_title('Template SED plots')
+        ee = np.logspace(2,5)
+        fig, ax = plt.subplots(figsize=(6,4))
+        fig.set_facecolor('white')
+        for tm in  self.templates:
+            f = lambda e: tm.spectral_model(e)*e**2
+            ax.loglog(ee, f(ee)/f(1e3), '-', label=tm.name, lw=2);
+        ax.set(ylim=(2e-3,10),xlim=(ee[0],ee[-1]), ylabel='Energy flux', xlabel='Energy [MeV]', title='Spectral templates')
+        ax.legend(loc='lower left');
         return fig
 
     def seed_plots(self,  bcut=5, subset=None, title=None):
@@ -91,18 +92,16 @@ class SourceDetection(sourceinfo.SourceInfo):
         histkw=dict(histtype='step', lw=2)
         def all_plot(ax, q, dom, label, log=False):
             for key in keys:
-                ax.hist(q[z.key==key].clip(dom[0],dom[-1]),dom, label=self.alias_dict[key], log=log, **histkw)
-            plt.setp(ax, xlabel=label, xlim=(None,dom[-1]))
-            ax.grid()
+                ax.hist(q[z.key==key].clip(dom[0],dom[-1]),dom, label=key, log=log, **histkw)
+            ax.set( xlabel=label, xlim=(dom[0],dom[-1]))
+            ax.grid(alpha=0.5)
             ax.legend(prop=dict(size=10, family='monospace'))
             if log: ax.set_ylim(ymin=0.9)
         all_plot(axx[0], z['size'], np.linspace(0.5,10.5,11), 'cluster size')
-        all_plot(axx[1], z.ts.clip(10,25), np.linspace(10,25,16), 'TS', log=True)
+        all_plot(axx[1], z.ts.clip(15,50), np.linspace(15,50,16), 'TS', log=True)
         all_plot(axx[2], np.sin(np.radians(z.b)), np.linspace(-1,1,21), 'sin(b)')
         axx[2].axvline(0, color='k')
-        fig.suptitle('{} seeds'.format( len(z)) )
-        #     if title is None else title)
-        fig.set_facecolor('white')
+        fig.set(facecolor='white')
         return fig
 
     def detection_plots(self):

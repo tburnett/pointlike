@@ -16,7 +16,8 @@ from uw.utilities import makepivot
 
 class GalacticCorrection():
     def __init__(self, config):
-        galdict = config.diffuse['ring']
+        galdict = config.diffuse.get('ring', config.diffuse.get('gal', None))
+        assert galdict is not None, 'Expect galactic diffuse, either "ring" or "gal"'
         self.internal = galdict.get('key', None)=='gal'
         self.nocorr = not self.internal and 'correction' not in galdict
         if self.nocorr: return
@@ -116,7 +117,7 @@ class CountPlots(analysis_base.AnalysisBase):
                 skipped = t.index[y][:-1]; print 'Skipped starts:\n{}'.format(t.ix[skipped])
             else: self.history=t
             
-            input_model=self.config['input_model']['path']
+            input_model=self.config['input_model'].get('path', '.')
 
             # note use of 'plots/' below since not done with setup 
             maxlines = 40
@@ -267,7 +268,8 @@ class CountPlots(analysis_base.AnalysisBase):
         return fig
         
     def chisq_plots(self, use10=True, unweight=False, hsize=(1.0, 0.7, 1.5, 0.7), 
-            vmin=0, vmax=50, bcut=10, grid_flag=True, makecollection=False):
+            vmin=-1, vmax=3,  log10=True, 
+            bcut=10,grid_flag=True, makecollection=False):
         """ chi squared plots
         chi squared distribution
         <p>Only for bins below 10 GeV.
@@ -277,12 +279,17 @@ class CountPlots(analysis_base.AnalysisBase):
         
         
         fig, axs = self.subplot_array( hsize, figsize=(11,5))
+        fig.set_facecolor('white')
         if unweight:
             chisq = self.rois.uchisq
         else:
             chisq = self.rois.chisq if not use10 else self.rois.chisq10
 
-        chisqtxt= r'$\chi^2$'
+        x2 = chisq.astype(float)
+        if log10: x2 = np.log10(x2)
+        x2 = x2.clip(vmin,vmax)
+
+        chisqtxt= r'$log_{10}(\chi^2)$' if log10 else  r'$\chi^2$' 
         
         # make a table of the bad ones, sorted by chisq
         
@@ -311,19 +318,19 @@ class CountPlots(analysis_base.AnalysisBase):
                 href_pattern='countfig/%s_counts*.jpg')
 
         def chisky(ax):
-            self.basic_skyplot(ax, self.rois.glon, self.rois.singlat, chisq, 
+            self.basic_skyplot(ax, self.rois.glon, self.rois.singlat, x2, 
                 s=55, marker='D', vmin=vmin, vmax=vmax,  edgecolor='none', 
-                cmap=plt.get_cmap('YlOrRd'), colorbar=True, cbtext=chisqtxt);
+                cmap=plt.get_cmap('YlOrRd'), colorbar=True, cbtext=chisqtxt)
                 
         def chihist(ax, htype='stepfilled'):
-            bins = np.linspace(0, vmax, 26)
+            bins = np.linspace(vmin, vmax, 26)
             lolat = np.abs(self.rois.glat)<bcut
-            x2 = np.array(chisq,float)
-            ax.hist(x2.clip(0,vmax), bins, label='all: mean=%.0f'%chisq.mean(), histtype=htype)
-            ax.hist(x2.clip(0,vmax)[lolat], bins, color='orange', 
+
+            ax.hist(x2,   bins, label='all: mean=%.0f'%chisq.mean(), histtype=htype)
+            ax.hist(x2[lolat], bins, color='orange', 
                 label='|b|<%d (%.0f)'%(bcut, chisq[lolat].mean()), histtype=htype)
             ax.legend(loc='upper right', prop=dict(size=10)) 
-            plt.setp(ax, xlabel=chisqtxt, xlim=(0,vmax))
+            ax.set( xlabel=chisqtxt, xlim=(vmin,vmax))
             ax.grid(grid_flag)
             
         for f, ax in zip( (chihist, chisky), axs.flatten()): f(ax)

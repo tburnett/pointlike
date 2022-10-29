@@ -97,7 +97,7 @@ class HParray(object):
             plot(norm=LogNorm(vmin=1,vmax=10))
         It returns a image.AIT object, which has a colorbar member that can be adjusted.
         """
-        cbtext = kwargs.pop('cbtext', '')
+        cbtext = kwargs.pop('cbtext', self.unit)
         if log:
             vmin=kwargs.pop('vmin', None)
             vmax=kwargs.pop('vmax', None)
@@ -492,11 +492,11 @@ class HEALPixFITS(list):
         self.energies=energies
         for col in cols:
             self.append( col if col.nside==self.nside else HPresample(col, self.nside) )
-            print 'appended column {}, unit={}'.format(col.name, col.unit)
+            print 'appended column {}, unit={}'.format(col.name, col.unit if 'unit' in col else 'none')
     
     def make_table(self, unit=None):        
         makecol = lambda v: pyfits.Column(name=v.name, format='E', 
-            unit=v.unit if unit is None else unit, array=v.getcol())
+            unit=v.unit if unit is None and 'unit' in v else unit, array=v.getcol())
         cols = map(makecol, self)
         nside = self.nside
         cards = [pyfits.Card(*pars) for pars in [ 
@@ -617,7 +617,7 @@ class FromFITS(HParray):
                 .format(filename=filename,colname=colname, found=cnames)
         assert 'NSIDE' in hdu.header, 'Bad header in file "{}"? No NSIDE'.format(filename)
         self.nside = hdu.header['NSIDE']
-        super(FromFITS, self).__init__(colname, data[colname])
+        super(FromFITS, self).__init__(colname, data[colname], unit=hdu.header.get('TUNIT1', ''))
 
 class FromCCube(HParray):
     """Manage the gtlike HEALPix counts map

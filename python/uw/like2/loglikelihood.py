@@ -198,7 +198,7 @@ class PoissonFitter(object):
     array([ 50.,   1.,  10.])
     
     """
-    def __init__(self, func, scale=None, tol=0.20, delta=1e-4, dd=-0.1):
+    def __init__(self, func, scale=None, tol=0.20, delta=1e-4, dd=-50):
         """
         parameters
         ----------
@@ -209,6 +209,9 @@ class PoissonFitter(object):
             absolute tolerance in probability amplitude for fit, within default domain out to delta L of 4
         delta : float
             value to calculate derivative at zero flux
+
+        dd  : float
+            Klugy fix for very steep function. Problmatical
         """
         self.func = func
         #first check derivative at zero flux - delta is sensitive

@@ -146,6 +146,7 @@ class DataSpec(object):
 
     defaults = (
         ('ft1',None,'a file, list of files, or wildcard expression'),
+        ('ft1files', [], 'Not used here, for backward compatibilty'),
         ('ft2','$FERMI/ft2.fits','a file, list of files, or wildcard expression'),
         ('binfile',None,'(a) destination for new binfile or (b) location of existing one'),
         ('ltcube',None,'(a) destination for new ltcube or (b) location of existing one'),
@@ -169,6 +170,7 @@ class DataSpec(object):
         ('legacy', False,  'relax DSS requirements for legacy files'),
         ('data_pass',7,'the generation (Pass6, Pass7,...) of the data'),
         ('nocreate', False, 'Set True to supress creation of files, raise exception instead'),
+        ('ignore_GTI', True, 'bypass GIT check'),
         # keyword controlling livetimecube pixel size? and buffer cone?
     )
     binner = None # static variable for PhotonBinner
@@ -190,7 +192,7 @@ class DataSpec(object):
                 self._get_ft1_dss()
                 self._make_cuts()
                 # Get GTI from FT1 if not already set
-                if self.gti is None:
+                if not ignore_GTI and self.gti is None:
                     self.gti = self._get_GTI() 
                 if not self._check_binfile():
                     if self.nocreate: raise DataManException('need to create %s' %self.binfile)
@@ -400,14 +402,15 @@ class DataSpec(object):
         # #
         #  Check GTI
         #
-        gti = skymaps.Gti(self.binfile)
-        if not self.quiet: print 'GTI from binfile', gti
-        if gti is None:
-            raise DataManException('GTI not found in the binfile %s' % self.binfile)
-        self.gti = gti
-        if  (gti.minValue!=self.gti.minValue) or abs((gti.computeOntime() - self.gti.computeOntime())>1.0 ):
-            print 'File %s Failed GTI check: \n  expect %s \n  found  %s' % (self.binfile, self.gti, gti)
-            return False #self.legacy # ignore if legacy, for now
+        if not self.ignore_GTI:
+            gti = skymaps.Gti(self.binfile)
+            if not self.quiet: print 'GTI from binfile', gti
+            if gti is None :
+                raise DataManException('GTI not found in the binfile %s' % self.binfile)
+            self.gti = gti
+            if  (gti.minValue!=self.gti.minValue) or abs((gti.computeOntime() - self.gti.computeOntime())>1.0 ):
+                print 'File %s Failed GTI check: \n  expect %s \n  found  %s' % (self.binfile, self.gti, gti)
+                return False #self.legacy # ignore if legacy, for now
         
         if (not self.quiet): print('Verified binfile {0}'.format(self.binfile))
         return True
@@ -496,13 +499,14 @@ class DataSpec(object):
         #
         # compare GTI with that found in FT1 or binfile
         #
-        gti = skymaps.Gti(ltcubes[0])
-        tdiff = gti.computeOntime() - self.gti.computeOntime()
-        if  (gti.minValue()!=self.gti.minValue()) or abs(tdiff)>1:
-            print 'Failed gti check, time difference %.1f:\n  ltcube: %s \n binfile: %s' % (tdiff, gti, self.gti)
-            # dump([gti,self.gti], open('gti_failure.pkl','w'))
-            # print 'saved the gti objects to "gti_failure.pkl"'
-            return True 
+        if not self.ignore_GTI:
+            gti = skymaps.Gti(ltcubes[0])
+            tdiff = gti.computeOntime() - self.gti.computeOntime()
+            if  (gti.minValue()!=self.gti.minValue()) or abs(tdiff)>1:
+                print 'Failed gti check, time difference %.1f:\n  ltcube: %s \n binfile: %s' % (tdiff, gti, self.gti)
+                # dump([gti,self.gti], open('gti_failure.pkl','w'))
+                # print 'saved the gti objects to "gti_failure.pkl"'
+                return True 
             
         if (not self.quiet): print('Verified ltcube {} {}'.format(ltcubes[0],
             '(without DSS)' if nodss else ''))

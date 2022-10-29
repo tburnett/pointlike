@@ -275,7 +275,7 @@ class BinFile(object):
             if i==0: # first one: will add others, if any to this one
                 if not quiet:print '\n"{}" '.format(filename),
                 self.hdus=fits.open(filename)
-                self.gti=GTI(self.hdus['GTI'])
+                # self.gti=GTI(self.hdus['GTI'])
                 if 'PIXELS' in self.hdus: 
                     # old format
                     self.bands=BandList(self.hdus['BANDS'])
@@ -301,7 +301,7 @@ class BinFile(object):
 
     def __repr__(self):
         out = self.fits_info()
-        out += 'GTI: '+ self.gti.__repr__()  
+        # out += 'GTI: '+ self.gti.__repr__()  
         out += '\nBands: '+self.bands.__repr__()
         out += '\nPixels: '+self.pixels.__repr__()
         return out
@@ -325,7 +325,7 @@ class BinFile(object):
         """
         # combine the pixel and GTI arrays
         self.pixels.add(other.pixels)
-        self.gti.add(other.gti)
+        # self.gti.add(other.gti)
 
     def dataframe(self):
         """return a DataFrame with Band info and Pixel summary
@@ -350,10 +350,10 @@ class BinFile(object):
         """write to a file
 
         """
-        gti_hdu = self.gti.make_hdu()
+        # gti_hdu = self.gti.make_hdu()
         bands_hdu=self.bands.make_hdu() 
         pixels_hdu = self.pixels.make_hdu()
-        hdus=[self.hdus[0], pixels_hdu, bands_hdu, gti_hdu]
+        hdus=[self.hdus[0], pixels_hdu, bands_hdu] #, gti_hdu]
         fits.HDUList(hdus).writeto(filename, overwrite=overwrite)
         print 'wrote file {}'.format(filename)
 
@@ -434,7 +434,7 @@ class BinFile(object):
         ]
         ebounds_hdu = fits.BinTableHDU.from_columns(ebounds_cols, name='EBOUNDS')
 
-        hdus=[primary, skymap_hdu, ebounds_hdu, self.gti.make_hdu()]
+        hdus=[primary, skymap_hdu, ebounds_hdu,]# self.gti.make_hdu()]
         fits.HDUList(hdus).writeto(filename, overwrite=overwrite)
         print 'Wrote file {}'.format(filename)
     

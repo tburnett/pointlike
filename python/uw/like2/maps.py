@@ -285,32 +285,45 @@ class ROItables(object):
                 (KdeMap,    'kde', dict()),
             If skyfunction is a string, evaluate it 
 
-        if kwargs has disc_info: assume (l,b, r), and get all pixels in that disk
-        otherwise gets only the pixels in the standard nside=12 ROI
+        kwargs options select set of HP indeces.  In priority ordef:
+          index_table: table if HP indeces to use
+          disc_info: assume (l,b, r), and get all pixels in that disk
+          otherwise: use the pixels in the standard nside=12 ROI
     """
     
     def __init__(self, outdir, nside, roi_nside=12, **kwargs):
         self.subdirfun = Band(nside).dir
         disc_info = kwargs.pop('disc_info', ())
-
-        # allow arbitraty disk, rather than just within a ROI active boundary
-        if disc_info:
-            l, b, r = disc_info
-            vec = healpy.dir2vec(l,b, lonlat=True)
-            index_list = healpy.query_disc(nside=nside, vec=vec, radius=np.radians(r),nest=False)
-            self.pos_list = [self.subdirfun(int(i)) for i in index_list]
-        else:
-            self.index_table = make_index_table(roi_nside, nside)
-
- 
+        index_table = kwargs.pop('index_table', None)
         self.skyfuns = kwargs.pop('skyfuns', 
               ( (ResidualTS, 'ts', dict(photon_index=2.3),) , 
                 (KdeMap,     'kde', dict()),
               ),
             )
-        self.subdirs = [os.path.join(outdir, name+'_table_%d' %nside) for s, name, kw in self.skyfuns]
-        for subdir in self.subdirs: 
-            if not os.path.exists(subdir):  os.makedirs(subdir)
+        assert len(kwargs)==0, 'Unexpected kwargs: {}'.format(kwargs)
+
+        # allow arbitraty disk, rather than just within a ROI active boundary
+        if index_table is not None:
+            self.pos_list = [self.subdirfun(int(i)) for i in index_table]
+            self.index_table = index_table
+        elif disc_info:
+            l, b, r = disc_info
+            vec = healpy.dir2vec(l,b, lonlat=True)
+            index_list = healpy.query_disc(nside=nside, vec=vec, radius=np.radians(r),nest=False)
+            self.pos_list = [self.subdirfun(int(i)) for i in index_list]
+            self.index_table = index_list
+        else:
+            self.index_table = make_index_table(roi_nside, nside)
+        print 'Will process {} pixels with  spectral models:\n{}'.format(len(self.index_table), self.skyfuns)
+
+ 
+
+        if outdir:
+            self.subdirs = [os.path.join(outdir, name+'_table_%d' %nside) for s, name, kw in self.skyfuns]
+            for subdir in self.subdirs: 
+                if not os.path.exists(subdir):  os.makedirs(subdir)
+        else:
+            self.subdirs=[]
                     
     def process_table(self, skyfun, name, pos_list, outfile=None, **kwargs):
         sys.stdout.flush()
@@ -322,6 +335,7 @@ class ROItables(object):
             pickle.dump(skytable, open(outfile,'wb'))
         else: print  
         if hasattr(skyfun,'reset'): skyfun.reset() 
+        return skytable
   
     def __call__(self, roi):
         pos_list = getattr(self, 'pos_list', [])
@@ -329,11 +343,15 @@ class ROItables(object):
             # not created in ctor: make if from the name
             index = int(roi.name[5:])
             pos_list = [self.subdirfun(int(i)) for i in self.index_table[index]]
+        self.skytable=[self.index_table]
           
         for i,fun in enumerate(self.skyfuns):
             skyfun = fun[0] if type(fun[0])!=types.StringType else eval(fun[0])
-            self.process_table(skyfun(roi, **fun[2]), fun[1], pos_list, 
-                os.path.join(self.subdirs[i], roi.name+'.pickle'))
+
+            stbl =self.process_table(skyfun(roi, **fun[2]), fun[1], pos_list, 
+                os.path.join(self.subdirs[i], roi.name+'.pickle') if self.subdirs else None)
+            self.skytable.append( stbl)
+        return self.skytable
 
 
 class DisplayTable(object):
@@ -515,7 +533,7 @@ def make_index_table(nside=12, subnside=nside, usefile=True):
 class MultiMap(object):
     
     def __init__(self, names=['hard','flat','soft', 'peaked', 'psr'], 
-                 outdir='.', tname='all', nside=nside, roi_nside=12, fill=np.nan, disc=()):
+                 outdir='.', tname='all', nside=nside, roi_nside=12, fill=np.nan, roi_table_map=None):
         """ combine the tables generarated at each ROI
 
         names : names to give the columns, 
@@ -523,43 +541,51 @@ class MultiMap(object):
         tname : name of the table, default 'all'
         fill  : scalar, defaul NaN
             Use to fill missing tables, if any (warning issued)
-        disc  : tuple of (l,b,r) to specify a disc 
+        
+        Direct insertion option:
+
+        roi_table_map : tuple with index_map, rt_table
         """
         self.names=names
-        folder = '%s_table_%d'% (tname, nside)
-        if os.path.exists('%s.zip' % folder):
-            z=zipfile.ZipFile('%s.zip'% folder)
-            files = sorted(z.namelist()) # skip  folder?
-            opener = z.open
-        else:
-            if not os.path.exists(folder):
-                raise Exception('Did not find zip file %s.zip or folder  %s'% (folder,folder))
-            opener = open
-            files = sorted(glob.glob(os.path.join(outdir, folder,'*.pickle')))
-        nf = len(files)
-        assert nf>0, 'no pickle files found in %s' % os.path.join(outdir, folder)
-        if nf<1728: print 'warning: missing %d files in folder %s_table; will fill with %s' % ((1728-nf), tname,fill)
-
-
         mvec = np.zeros((12*nside**2,len(names)))
         mvec.fill(fill)
-        pklist = [pickle.load(opener(f)) for f in files]
-        if disc :
-            # special for a single disc -- kluge a special inndex_table
-            l, b, r = disc
-            vec = healpy.dir2vec(l,b, lonlat=True)
-            index_table = [healpy.query_disc(nside=nside, vec=vec, radius=np.radians(r),nest=False)]
-            i12 = [0]
-        else:
+
+        if roi_table_map is None:
+            # merege ROI files
+            folder = '%s_table_%d'% (tname, nside)
+            if os.path.exists('%s.zip' % folder):
+                z=zipfile.ZipFile('%s.zip'% folder)
+                files = sorted(z.namelist()) # skip  folder?
+                opener = z.open
+            else:
+                if not os.path.exists(folder):
+                    raise Exception('Did not find zip file %s.zip or folder  %s'% (folder,folder))
+                opener = open
+                files = sorted(glob.glob(os.path.join(outdir, folder,'*.pickle')))
+            nf = len(files)
+            assert nf>0, 'no pickle files found in %s' % os.path.join(outdir, folder)
+            if nf<1728: print 'warning: missing %d files in folder %s_table; will fill with %s' % ((1728-nf), tname,fill)
+            pklist = [pickle.load(opener(f)) for f in files]
             index_table = make_index_table(roi_nside, nside)
             i12 = [int(f[-11:-7]) for f in files]
 
-        for index, pk in zip(i12,pklist):
-            indeces = index_table[index]
-            for i,v in enumerate(pk):
-                mvec[indeces[i]] = v 
-        bad = sum(mvec==fill)
-        if np.any(bad)>0: print 'WARNING: %d pixels not filled in table %s' % (bad, tname)
+            for index, pk in zip(i12,pklist):
+                indeces = index_table[index]
+                for i,v in enumerate(pk):
+                    mvec[indeces[i]] = v 
+        else:
+            # straigt from  a map
+            rtm = roi_table_map
+            # special for a single disc -- kluge a special index_table
+            index_table, maps = rtm
+            assert len(index_table)==maps.shape[0]
+            assert len(names)==maps.shape[1]
+            for i,m in enumerate(maps.T):
+                mvec[index_table,i] = m
+    
+        bad = np.isnan(mvec)
+        
+        if np.any(bad): print 'WARNING: pixels not filled in table' 
         else:
             print 'Table "{}" Filled with columns {}'.format(tname, names)
         self.mvec= mvec

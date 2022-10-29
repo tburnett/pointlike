@@ -38,7 +38,7 @@ class FillMixin(object):
         dm  : [SkyFuntion for diffuse map | None]
             If None, expect predetermined values in cache, which may be an array or a scalar
         """
-        #print 'filling with product of exposure "%s" model "%s"' % (exp, dm)
+        #print 'bg_fill: **** filling with product of:\n\texposure "%s"\n\tmodel "%s"' % (exp, dm)
         
         if dm is None:
             assert cache is not None, 'Logic error'
@@ -52,6 +52,7 @@ class FillMixin(object):
         #self.dm_vals = self.fill(dm) #temporary
         #self.exp_vals = self.fill(exp)
         # check for nans, replace with zeros if not full ROI
+
         nans = np.isnan(self.bg_vals)
         if np.all(nans):
             if dm is None: raise Exception('Cache entry has all nans: %s'%cache)

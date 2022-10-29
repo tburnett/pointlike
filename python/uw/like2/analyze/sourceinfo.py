@@ -149,6 +149,7 @@ class SourceInfo(analysis_base.AnalysisBase): #diagnostics.Diagnostics):
                         ts_flat = ts_flat,
                         )
             df = pd.DataFrame(sdict).transpose()
+            assert len(df)>0, 'No sources found!'
             df.index.name='name'
             df['name'] = df.index
             ra = [x.ra() for x in df.skydir]
@@ -249,8 +250,36 @@ class SourceInfo(analysis_base.AnalysisBase): #diagnostics.Diagnostics):
                 glat=s.glat, glon=s.glon, roiname=s.roiname),
             index=s.index).sort_values(by='roiname')
 
-    def cumulative_ts(self, ts=None, tscut=(10,25, 300), check_localized=False, 
-            label=None,  other_ts=[], other_label=[],  legend=True):
+    def cumulative_ts(self, latcut=10, loncut=90, dlim=900 ):
+        """ Cumulative test statistic TS
+        
+        Plots of "logN-logS" for high and low latitudes, but using TS for source intensity. 
+        Important thresholds at TS=10 and 25 are shown.
+        The lower plots show the difference between the cumulative counts, and an expected distribution
+        with a -3/2 slope.
+        """
+        df = self.df
+        hilat = np.abs(df.glat)>latcut
+        glon = df.glon.values
+        glon[glon>180]-=360
+        innergal = (np.abs(df.glat)<latcut) & (abs(glon)<loncut)
+
+        fig, axx= plt.subplots(2,2, figsize=(12,6), sharex=False, gridspec_kw={'hspace':0.})
+        fig.set_facecolor('white')
+        axes=axx.flatten()
+        axes[0].tick_params(labelbottom=False)
+        left, bottom, width, height = (0.10, 0.10, 0.40, 0.85)
+        fraction = 0.75
+        axes[0].set_position([left, bottom+(1-fraction)*height, width, fraction*height])
+        axes[1].set_position([left, bottom, width, (1-fraction)*height])
+        axes[2].set_position([left+0.5, bottom+(1-fraction)*height, width, fraction*height])
+        axes[3].set_position([left+0.5, bottom, width, (1-fraction)*height])
+
+        self.cum_ts(ts=df.ts[~innergal], axes=axes[:2], title=r'Outer galaxy or $|b|>{}^\circ $'.format(latcut),dlim=dlim)
+        self.cum_ts(ts=df.ts[innergal],  axes=axes[2:], title=r'Inner galaxy: $|b|<{}^\circ \ & \ |l|<{}^\circ $'.format(latcut, loncut),dlim=dlim)
+        return fig
+
+    def cum_ts(self, ts=None, axes=None, tscut=(10,25, 300),  legend=True, title='', dlim=520):
         """ Cumulative test statistic TS
         
         A logN-logS plot, but using TS. Important thresholds at TS=10 and 25 are shown.
@@ -259,19 +288,23 @@ class SourceInfo(analysis_base.AnalysisBase): #diagnostics.Diagnostics):
         """
         usets = self.df.ts if ts is None else ts
         df = self.df
-        fig, axes= plt.subplots(2,1, figsize=(6,6), sharex=True, gridspec_kw={'hspace':0.})
-        axes[0].tick_params(labelbottom=False)
-        left, bottom, width, height = (0.15, 0.10, 0.75, 0.85)
-        fraction = 0.75
 
-        axes[0].set_position([left, bottom+(1-fraction)*height, width, fraction*height])
-        axes[1].set_position([left, bottom, width, (1-fraction)*height])
+        if axes is None:
+            # set up axes, fig
+            fig, axes= plt.subplots(2,1, figsize=(6,6), sharex=True, gridspec_kw={'hspace':0.})
+            axes[0].tick_params(labelbottom=False)
+            left, bottom, width, height = (0.15, 0.10, 0.75, 0.85)
+            fraction = 0.75
+            axes[0].set_position([left, bottom+(1-fraction)*height, width, fraction*height])
+            axes[1].set_position([left, bottom, width, (1-fraction)*height])
+        else:
+            fig = axes[0].figure
         
         ax=axes[0]
         dom = np.logspace(np.log10(9),5,1601)
         ax.axvline(25, color='green', lw=1, ls='--',)#label='TS=25')
         hist_kw=dict(cumulative=-1, lw=2,  histtype='step')
-        ht=ax.hist( np.array(usets,float) ,dom, color='k',  label=label, **hist_kw)
+        ht=ax.hist( np.array(usets,float) ,dom, color='k',   **hist_kw)
         # add logN-logS line with slope -2/3
         anchor=300 #100 
         y = sum(usets>anchor)
@@ -281,20 +314,8 @@ class SourceInfo(analysis_base.AnalysisBase): #diagnostics.Diagnostics):
         popf = lambda x: np.exp(a + b*np.log(x))
         ax.plot(dom, popf(dom), '--r', label='-3/2 slope');
         
-
-        if len(other_ts)>0 :
-            for ots, olab in zip(other_ts,other_label):
-                ax.hist( ots, dom,  label=olab, **hist_kw)
-        if check_localized:
-            unloc = df.unloc
-            ul = df[(unloc | df.poorloc) & (usets>tscut[0])] 
-            n = len(ul)
-            if n>10:
-                ax.hist(np.array(ul.ts,float) ,dom,  color='r', 
-                    label='none or poor localization', **hist_kw)
-                ax.text(12, n, 'none or poor localization (TS>%d) :%d'%(tscut[0],n), fontsize=12, color='r')
         ax.set( ylabel='# sources with greater TS', xlabel='TS',
-            xscale='log', yscale='log', xlim=(9, 1e3), ylim=(ymin,None)) #ylim=(200,20000))
+            xscale='log', yscale='log', xlim=(9, 1e3), ylim=(ymin,None), title=title) #ylim=(200,20000))
         ax.xaxis.set_major_formatter(ticker.FuncFormatter(
             lambda val,pos: { 10.0:'10', 100.:'100'}.get(val,'')))
             
@@ -307,7 +328,7 @@ class SourceInfo(analysis_base.AnalysisBase): #diagnostics.Diagnostics):
             ax.text(f*t, n, 'TS>%d: %d'%(t,n), fontsize=14, va='center', ha=ha)
                 
         ax.grid(True, alpha=0.3)
-        if (label is not None or other_label is not None) and legend: 
+        if  legend: 
             leg =ax.legend()
             for patch in leg.get_patches():
                 pbox = patch; pbox._height=0; pbox._y=5
@@ -315,16 +336,17 @@ class SourceInfo(analysis_base.AnalysisBase): #diagnostics.Diagnostics):
         # stack over difference from the logN-logS
         ax = axes[1]
         dom2 = dom[1:]
-        ax.plot(dom2, ht[0] -popf(dom2) ,  label=label, lw=2,  )
-
-        n = sum(usets>25) -popf(25)
+        ax.plot(dom2, ht[0] -popf(dom2) ,  lw=2,  )
+        n25 = sum(usets>25)
+        n = n25-popf(25)
+        dn = int(100*n/float(n25))
         ax.plot([25,50], [n/2,-100], ':r')
         ax.plot([25,25], [n, 0], '-r', lw=4)
-        txt = ' deficit: {}'.format(-int(n)) if n<0 else ' surplus: {}'.format(int(n))
-        ax.text(50, -100, txt, fontsize=14, va='center')
+        txt = ' deficit: {} ({})%'.format(-int(n), dn) if n<0 else ' surplus: {} ({})%'.format(int(n),dn)
+        ax.text(50, -dlim/4, txt, fontsize=14, va='center')
 
         ax.set( ylabel='difference', xlabel='TS',
-            xscale='log',  xlim=(9, 1000),ylim=(-250,250) )
+            xscale='log',  xlim=(9, 1000),ylim=(-dlim,dlim) )
         ax.axvline(25, color='green', lw=1, ls='--')# ,label='TS=25')
         ax.axhline(0, color='gray')
 
@@ -332,7 +354,7 @@ class SourceInfo(analysis_base.AnalysisBase): #diagnostics.Diagnostics):
             lambda val,pos: { 10.0:'10', 100.:'100'}.get(val,'')))
 
         ax.grid(True, alpha=0.3)
-
+        fig.set_facecolor('white')
         return fig
 
     def cumulative_counts(self):
@@ -825,7 +847,38 @@ class SourceInfo(analysis_base.AnalysisBase): #diagnostics.Diagnostics):
             +html_table(self.census_data, maxlines=20, href=False)
         
       
-  
+    def recent_origin(self, recent_adds='211 214 215'.split() ):
+        """
+        """
+        df = self.df
+        self.census()
+        cs = self.census_data    
+        t = cs.loc[recent_adds,25]
+        t, np.cumsum(t.values)
+
+        added = lambda nm: nm[:3] in recent_adds
+        ts = df.ts[map(added, df.index)].values.astype(float); ts
+
+        def flabel(n, x):
+            return '{} ({})'.format(n, sum(x>25))
+        tsall = df.ts.astype(float).clip(5,500)
+        xlim = (5,500)
+        ts = [ tsall[map(lambda  nm:  nm.startswith(key), df.index)] for key in recent_adds];
+        fig, ax = plt.subplots(figsize=(8,5))
+        fig.set_facecolor('white')
+        hpkw = dict(bins=np.logspace(np.log10(5),np.log10(500),41), histtype='step', lw=2)
+        ax.hist(tsall, label=flabel('all',tsall), **hpkw)
+        hpkw.update(histtype='stepfilled')
+        ax.hist(ts,  stacked=True,  label=[flabel('uw1'+n, ts[i]) for i,n in enumerate(recent_adds)], **hpkw);
+
+        ax.set(xscale='log', ylim=(0.9,None), xlim=xlim, xlabel='TS', title='TS: total and by recent origin');
+        xticks=[10,25,100]
+        ax.set_xticks(xticks)
+        ax.set_xticklabels( map(lambda x:'{:0.0f}'.format(x), xticks) )
+        ax.axvline(25, color='grey', ls='--')
+        ax.legend(title='set, n(TS>25)')
+        return fig
+
 
     def flag_proc(self, make_pivot=False):
         """ Flagged source summary:

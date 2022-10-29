@@ -48,6 +48,7 @@ def plot(localizer, name=None, center=None, size=0.5, pixelsize=None, outdir=Non
       markersize  [10]   -- set 0 to not plot nearby sources in the model
       markercolor [blue]
       tsfits      [False] -- set True to also create a FITS-format file with the image
+      ax or axes  [None]
       =========   =======================================================
 
     returns the image.TSplot object for plotting positions, for example
@@ -55,6 +56,7 @@ def plot(localizer, name=None, center=None, size=0.5, pixelsize=None, outdir=Non
     source = localizer.tsm.source
     if name is None: name=source.name
     sdir = center if center is not None else source.skydir
+    axes =  kwargs.pop('ax', axes)
     if axes is None: 
         fig = plt.figure(fignum,figsize=(4,4)); 
         fig.clf()

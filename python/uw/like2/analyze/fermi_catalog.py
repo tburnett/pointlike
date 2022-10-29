@@ -10,7 +10,7 @@ from astropy.io import fits
 from astropy.table import Table
 from skymaps import SkyDir, Band
 from uw.like import Models
-from uw.like2 import sedfuns
+from uw.like2 import sedfuns, tools
 
 # this gets set to most recent Fermi Calalog 
 energy_bounds=None
@@ -361,20 +361,29 @@ class GLL_PSC2(object):
         self.version = filename.split('_')[-1].split('.')[0]
         self.data = data =fits.open(filename)[1].data
         # expect to find these: ignore the rest
+        fits_colnames = self.data.dtype.names 
 
         colnames = """\
                 Source_Name NickName RAJ2000 DEJ2000 SpectrumType Extended Test_Statistic 
                 Energy_Flux100 Pivot_Energy
                 LP_Index LP_beta 
                 PL_Index
-                 PLEC_Index PLEC_Exp_Index PLEC_Expfactor
                 Conf_95_SemiMajor Conf_95_SemiMinor
                 """.split()
 
-        if 'LP_Flux_Density' in [x.name for x in data.columns]:
+        dr2_names = """PL_Flux_Density LP_Flux_Density PLEC_Flux_Density
+                    PLEC_Index PLEC_Exp_Index PLEC_Expfactor """.split()
+        dr3_names = """PL_Flux_Density LP_Flux_Density PLEC_Flux_Density
+                    PLEC_IndexS PLEC_Exp_Index PLEC_ExpfactorS """.split()
+        
+        if 'PLEC_IndexS' in fits_colnames:
+            # DR3 format
+            colnames += dr3_names
+        elif 'LP_Flux_Density' in fits_colnames:
             # newer format with prefactors for each one
-            colnames += """PL_Flux_Density LP_Flux_Density PLEC_Flux_Density""".split()
+            colnames += dr2_names
         else:
+            # original format
             colnames +=  ["Flux_Density"]
         srcdict = dict(zip(colnames, [data.field(name) for name in colnames]))
 
@@ -408,6 +417,12 @@ class GLL_PSC2(object):
                 cutoff = (1/a)**(1/b)
                 prefactor = flux*np.exp( a*pivot**b )
                 return Models.PLSuperExpCutoff(p=[prefactor, index, cutoff, b], e0=pivot,free=free)
+            def plec4():
+                #### Not finished--just a placeholder
+                index, a,b = ce.PLEC_IndexS, ce.PLEC_ExpfactorS, ce.PLEC_Exp_Index
+                cutoff = (1/a)**(1/b)
+                prefactor = flux*np.exp( a*pivot**b )
+                return Models.PLSuperExpCutoff(p=[prefactor, index, cutoff, b], e0=pivot,free=free)
             def lp():
                 index,beta =  ce.LP_Index, ce.LP_beta
                 return Models.LogParabola(p=[flux, index, beta, pivot],free=free)
@@ -424,11 +439,12 @@ class GLL_PSC2(object):
             # deal with change.
             flux_name = 'Flux_Density'
             if not flux_name in ce:
-                flux_name = dict(PowerLaw='PL', LogParabola='LP', PLSuperExpCutoff2='PLEC')[stype]+'_Flux_Density'
+                flux_name = dict(PowerLaw='PL', LogParabola='LP', PLSuperExpCutoff2='PLEC',
+                            PLSuperExpCutoff4='PLEC')[stype]+'_Flux_Density'
             flux = ce[flux_name]
             
             # get model, selecting function to evaluate
-            model = dict(PowerLaw=pl, LogParabola=lp, PLSuperExpCutoff2=plec)[stype]()
+            model = dict(PowerLaw=pl, LogParabola=lp, PLSuperExpCutoff2=plec, PLSuperExpCutoff4=plec4)[stype]()
 
             return dict(sname=ce.Source_Name.strip(), 
                         ra=ce.RAJ2000, dec=ce.DEJ2000, 
@@ -459,3 +475,65 @@ class Compare_gll(object):
         ret= pd.DataFrame([self.g[0].cat_df.loc[source], self.g[1].cat_df.loc[source]], index=self.names)[cols].T
         ret.index.name=source
         return ret
+
+#import tools
+
+def check4FGL(df, 
+              pattern='/nfs/farm/g/glast/g/catalog/P8_P305/4FGL-DR2/gll_pscP305uw9011_v*.fit*',
+              systematic=[1.05,0.45]):
+
+    """ add 4FGL info into a dataframe of pointlike sources
+
+        -	fl8y : if coincides with the 4FGL-DR2, 
+        -	otherid: the pointlike name
+        -	distance: (deg) closest 4FGL-DR2 source: if 0, then a match
+        -	otherts : its TS
+        -	other_extended: is it extended? In this case the otherid is the name of the source. 
+        -	fglname: the official 4FGL-DR2 name: add "4FGL" in front of this entry
+     """
+
+    cindex = [n.replace(' ','') for n in df.index]
+    f95, quad = 2.45*systematic[0], systematic[1]/60. 
+    df['r95'] = (f95**2*(df.a * df.b) + quad**2)** 0.5
+
+    # get the catalog "gll" entries as a DataFrame and set corresponding values
+
+    if not pattern.startswith('/'):
+        pattern = '$FERMI/catalog/'+pattern
+    fgl_name = pattern.split('/')[-2]
+    filename = sorted(glob.glob(os.path.expandvars(pattern)))[-1]
+    fcat = GLL_PSC2(filename)
+    fhl_file = fcat.filename.split('/')[-1]
+    gdf=  fcat.df
+    gdf['uw_ts']     = df.ts
+    gdf['uw_r95']    = df.r95
+    gdf['uw_pindex'] = df.pindex
+    gdf['uw_eflux100']=df.eflux100
+
+    # add boolean for in FL8Y 
+    df['fl8y'] = np.isin(cindex, gdf.index )
+    print '{} of {} have nicknames in pointlike list'.format(sum(df.fl8y), len(gdf))
+
+    # for sources not already tagged via the pointlike name being the same as the gtlike nickname
+    # look for nearest 4FGL source: add name, its distance to DataFrame
+    ok  = df.fl8y==True
+    added = np.logical_not(ok)
+
+    df.loc[df.index[ok],'otherid']= df[ok].index
+    df.loc[df.index[ok], 'distance']=0
+
+    # look for nearest 4FGL source in rejected list: add name, distance to DataFrame
+    print 'Searching {} for nearest source to the {} not found in it...'.format(fgl_name,sum(added)),
+    close = tools.find_close(df[added], gdf)
+
+    df.loc[df.index[~ok],'otherid'] = close.otherid
+    df.loc[df.index[~ok], 'distance'] = close.distance
+
+    df['otherts'] = [gdf.loc[s.otherid.replace(' ','')].ts for name,s in df.iterrows() ]
+    df['other_extended'] = [gdf.loc[s.otherid.replace(' ','')].extended for name,s in df.iterrows() ]
+
+    # extract the 4FGL name, strip off the "4FGL"
+    sn = map(lambda n: n[5:],gdf.loc[df.otherid].sname.values) 
+    df['fglname'] = sn
+    
+    print 'done.'

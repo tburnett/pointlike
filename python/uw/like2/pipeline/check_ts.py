@@ -11,12 +11,16 @@ import numpy as np
 import pylab as plt
 import pandas as pd
 from pointlike import IntVector
+
+# this to fix the cluster mean
+import healpy
 # nside=512
 # band = Band(nside)
 # def sdir(index):
 #     return band.dir(int(index))
 band = None
 sdir = None
+
 
 class TSdata(object):
     def __init__(self, outdir, filename, nside=512, fieldname='ts'):
@@ -29,6 +33,8 @@ class TSdata(object):
         self.glat=None# np.array([sdir(i).b() for i in range(len(self.rts))])
         #self.glon= np.array([sdir(i).l() for i in range(len(self.rts))])
         #print 'read %s ok' %filename
+        self.fieldname=fieldname
+
     def select(self, ts_min=0, b_min=0):
         cut = (self.rts>ts_min)* (abs(self.glat)>b_min)
         return self.rts[cut]
@@ -113,22 +119,27 @@ def split_clusters(clusters, rts, maxsize=25, split_ts=25):
 class Cluster(object):
     def __init__(self, rts):
         self.rts = rts
+        self.nside = healpy.get_nside(rts)
     
     def group(self, clu):
         """ clu: list of pixel indices"""
         ts = np.array([self.rts[i] for i in clu])
-        #print clu, ts
-        dirs = [sdir(i) for i in clu]
-        ra   = np.array([s.ra() for s in dirs])
-        #print ra
-        dec  = np.array([s.dec() for s in dirs])
-        #print dec
-        wra = sum(ts*ra)/sum(ts)
-        wdec = sum(ts*dec)/sum(ts)
+        ### This fails if the cluster straddles ra=0!
+        # #print clu, ts
+        # dirs = [sdir(i) for i in clu]
+        # ra   = np.array([s.ra() for s in dirs])
+        # #print ra
+        # dec  = np.array([s.dec() for s in dirs])
+        # #print dec
+        # wra = sum(ts*ra)/sum(ts)
+        # wdec = sum(ts*dec)/sum(ts)
+        ### new code using healpy
+        vec =np.array(healpy.pix2vec(self.nside, clu))
+        wvec = (vec*ts).mean(axis=1)/ts.mean()
+        l,b = healpy.vec2dir(wvec, lonlat=True)
         self.ts = ts.max()
-        self.sdir = SkyDir(float(wra), float(wdec))
-        #print self.sdir
-
+        self.sdir = SkyDir(l,b, SkyDir.GALACTIC )
+ 
 def monthly_ecliptic_mask( month, elat_max=5):
     """return a nside=512 mask for the given month, an integer starting at 1
     """
@@ -194,8 +205,8 @@ def make_seeds(tsdata,  filename, fieldname='ts', nside=512 ,rcut=10, bcut=0,
             print >>rec, '%s-%04d\t%8.3f \t%8.3f\t %8.1f\t%8d\t%8.3f \t%8.3f ' %\
                 (seedroot, i,cl.sdir.ra(), cl.sdir.dec(),  cl.ts, len(x), cl.sdir.l(),cl.sdir.b())
         
-    if rec is not None: rec.close()
-    if out is not None: out.close()
+    if rec is not None and rec != sys.stdout: rec.close()
+    if out is not None : out.close()
     return len(clusters)
     
 def pipe_make_seeds(skymodel, fieldname='ts', prefix_char='S', filenamepattern='seeds/seeds_{}.txt',  minsize=1): # changed from 2!

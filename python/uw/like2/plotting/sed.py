@@ -53,6 +53,9 @@ class Plot(object):
         self.name = source.name
         self.model = source.spectral_model
         self.rec = getattr(source, 'sedrec', None)
+        if self.rec is None:
+            print 'sed.Plot: no sedrec'
+            raise Exception('sed.Plot: no sedrec for source {}'.format(self.name))
         assert energy_flux_unit in ('erg', 'MeV', 'GeV', 'eV') , 'unrecognized energy flux unit'
         self.energy_flux_unit= energy_flux_unit
         self.scale_factor = dict(erg=1.602e-12, MeV=1e-6, eV=1., GeV=1e-9)[energy_flux_unit]

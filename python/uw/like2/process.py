@@ -10,7 +10,8 @@ import pandas as pd
 from scipy import optimize
 from skymaps import SkyDir, Band
 from uw.utilities import keyword_options
-from uw.like2 import (main, tools, sedfuns, maps, sources, localization, roimodel, seeds, fit_diffuse,)
+from uw.like2 import (main, tools, sedfuns, maps, sources, localization, 
+                roimodel, seeds, fit_diffuse, source_weights)
 
 
 
@@ -53,6 +54,8 @@ class Process(main.MultiROI):
         ('special_flag',  False,  'set for special processing: invoke member func "special"'), 
         ('psc_flag',      False,   'Run comparisons with a corresponding psc file'),
         ('model_counts',  None,   'set to run model counts'),
+        ('weights_flag',  False,  'USe ROI to generate weights for all free point sources'),
+        ('weight_dir',  '../wtlike_data/weight_files', 'weight files location'),
         
     )
     
@@ -106,20 +109,23 @@ class Process(main.MultiROI):
         print '%4d-%02d-%02d %02d:%02d:%02d - %s - %s' %(time.localtime()[:6]+ (roi.name,)+(self.stream,))
 
         # special processing flags
+        if self.weights_flag:
+            source_weights.multiweights(roi, self.weight_dir)
+            return
         if self.diffuse_key is not None and self.diffuse_key!='post_gal':
             if self.diffuse_key=='iso':
                 fit_isotropic(self)
                 return
             elif self.diffuse_key=='gal_update':
-                fit_diffuse.fitter(self, select=[0], update=True)
+                fit_diffuse.fitter(self, update=True)
                 self.select()
                 write_pickle(self)
                 return
             elif self.diffuse_key=='both':
-                fit_diffuse.fitter(self)
+                fit_diffuse.fitter(self, gal_only=False)
                 return
             elif self.diffuse_key=='both_update':
-                fit_diffuse.fitter(self, update=True)
+                fit_diffuse.fitter(self, gal_only=False, update=True)
                 self.select()
                 write_pickle(self)
                 return
@@ -546,6 +552,9 @@ class FitGalactic(object):
             filename= '{}/{}.pickle'.format(folder, roi.name)
             pickle.dump(cx, open(filename, 'w'))
             print 'wrote file {}'.format(filename)
+
+    def __str__(self):
+        return str(self.fitpars[:,0].round(3))
 
     def fit(self, nbands=8, **kwargs): 
         roi = self.roi

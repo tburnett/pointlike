@@ -85,7 +85,7 @@ class FitPlotMixin(object):
         """
         parz = self.get_parameters()
         hess = self.hessian(parz)
-        cov = hess.I if len(parz)>1 else 1./hess
+        cov = np.linalg.inv(hess) if len(parz)>1 else 1./hess
         sigs = np.sqrt(np.asarray(cov.diagonal()).flatten())
         parmax = parz-self.gradient(parz)*sigs**2/2.
         return parz, parmax, sigs

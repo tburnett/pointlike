@@ -56,6 +56,8 @@ class Response(object):
         self.quiet = kwargs.pop('quiet', True)
         self.roi = roi
         self.active=True # so distant PointSource can be inactive
+        #print 'Response ***** called for source {}, band {}'.format(source.name, band)
+
         self.initialize() # can disable the response
 
         
@@ -172,11 +174,12 @@ class DiffuseResponse(Response):
         if self.setup and not force: return
         self.setup=True
         #set up the spatial model 
+        #print 'DiffuseResponse **** initializing '
         self.dmodel = self.source.dmodel[self.band.event_type]
         self.dmodel.load()
         self.energy = self.band.energy
         self.dmodel.setEnergy(self.band.energy)
-        
+
         roi_index = skymaps.Band(12).index(self.roicenter)
         self._keyword_check(roi_index)
         if getattr(self, 'preconvolved', False):
@@ -199,10 +202,12 @@ class DiffuseResponse(Response):
             self.ap_average *= self.years/10.
         
         else:
+            #print 'DiffuseResponse **** making grid ...'
             self.create_grid() # will raise exception if no overlap
             grid = self.grid
             inside = grid.dists< self.band.radius_in_rad
             self.ap_average = grid.cvals[inside].mean()
+            #print 'DiffuseResponse **** grid set'
             self.evalpoints = lambda dirs : grid(dirs, grid.cvals)
 
         self.delta_e = self.band.emax - self.band.emin
@@ -214,10 +219,13 @@ class DiffuseResponse(Response):
         
     def create_grid(self):
         # create a grid for evaluating counts integral over ROI, individual pixel predictions
+        npix=self.npix if self.energy>1000 else self.npix2,
+        #print 'create_grid ***** at  {}, npix {} '.format(self.roicenter, npix)
         grid = self.grid= convolution.ConvolvableGrid(center=self.roicenter, 
                 npix=self.npix if self.energy>1000 else self.npix2, 
                 pixelsize=self.pixelsize)
         # this may be overridden
+
         self.fill_grid()
 
             
