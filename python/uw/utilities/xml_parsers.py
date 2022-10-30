@@ -215,6 +215,7 @@ class XML_to_Model(object):
         Models.PowerLaw, Models.PowerLawFlux,
         Models.BrokenPowerLaw, Models.BrokenPowerLawFlux, Models.SmoothBrokenPowerLaw,
         Models.PLSuperExpCutoff,
+        Models.PLSuperExpCutoff4,
         Models.Constant, Models.FrontBackConstant,
         Models.LogParabola,
         uw.darkmatter.spectral.DMFitFunction,
@@ -225,6 +226,7 @@ class XML_to_Model(object):
         scalemodels.ScaleFactorFileFunction,
         scalemodels.ScaleFactorDMFitFunction,
         scalemodels.ScaleFactorPLSuperExpCutoff,
+        scalemodels.ScaleFactorPLSuperExpCutoff4,
         scalemodels.ScaleFactorGaussian,
     )
 

@@ -12,7 +12,7 @@ from copy import deepcopy
 
 import numpy as np
 
-from uw.like.Models import PowerLaw, PowerLawFlux, FileFunction, PLSuperExpCutoff, Gaussian, Constant, CompositeModel
+from uw.like.Models import PowerLaw, PowerLawFlux, FileFunction, PLSuperExpCutoff, PLSuperExpCutoff4,Gaussian, Constant, CompositeModel
 from uw.darkmatter.spectral import DMFitFunction
 
 def build_scale_factor(model_class):
@@ -185,6 +185,7 @@ ScaleFactorPowerLawFlux=build_scale_factor(PowerLawFlux)
 ScaleFactorFileFunction=build_scale_factor(FileFunction)
 ScaleFactorDMFitFunction=build_scale_factor(DMFitFunction)
 ScaleFactorPLSuperExpCutoff=build_scale_factor(PLSuperExpCutoff)
+ScaleFactorPLSuperExpCutoff4=build_scale_factor(PLSuperExpCutoff4)
 ScaleFactorGaussian=build_scale_factor(Gaussian)
 
 if __name__ == "__main__":
