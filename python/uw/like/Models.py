@@ -1261,8 +1261,6 @@ class Model(object):
         self.setp(0, self.getp(0)*factor)
 
         
-
-
 class PowerLaw(Model):
     """ Implement a power law.  See constructor docstring for further keyword arguments.
 
@@ -1654,7 +1652,6 @@ class SmoothBrokenPowerLaw(Model):
     def full_name(self):
         return '%s, e0=%.0f, beta=%.3g'% (self.pretty_name,self.e0,self.beta)
 
-
 class LogParabola(Model):
     """ Implement a log parabola (for blazars.)  See constructor docstring for further keyword arguments.
 
@@ -1981,6 +1978,93 @@ class PLSuperExpCutoff(Model):
         """
         gamma = self['Index']
         self['norm'] *= (e0p/self.e0)**-gamma
+        self.e0 = e0p
+
+class PLSuperExpCutoff4(Model):
+    """ Power-law with hyperexponential cutoff.
+    
+    Introduced to minimize covariance between parameters.
+    
+    f(e) = n_0 * (e/e_0)^(d/b-gamma) * exp[d/b^2*(1-(e/e_0)^b]
+    
+    Spectral parameters:
+            n0          differential flux at e0 MeV
+            gamma       spectral index: e^(-gamma)
+            d           curvature parameter
+            b           hyperexponential/asymmetry parameter
+        """
+    default_p = [1e-11, 2.0, 0.8, 1.]
+    default_extra_params=OrderedDict((('e0',1.5e3),))
+    param_names=['Norm','Index','Curvature', 'b']
+    default_mappers=[LogMapper,LinearMapper,LogMapper,LinearMapper]
+    default_extra_attrs=dict()
+
+    gtlike = dict(
+        name='PLSuperExpCutoff4',
+        param_names=['Prefactor','IndexS','ExpfactorS','Index2'],
+        extra_param_names=dict(e0='Scale'),
+        topointlike=[operator.pos,operator.neg,operator.pos,operator.pos],
+        togtlike=[operator.pos,operator.neg,operator.pos,operator.pos])
+
+    default_limits = dict(
+        Norm=LimitMapper(1e-15,1e-3,1e-9),
+        Index=LimitMapper(0,5,1),
+        Curvature=LimitMapper(1e-3,2,1),
+        b=LimitMapper(-5,5,1)
+        )
+    default_oomp_limits=['Norm','Curvature']
+
+    def __call__(self,e):
+        """ Return the differential intensity.
+        >>> m = PLSuperExpCutoff4([1e-11,2,0.8,1], e0=1e3)
+        >>> expected = np.asarray([5.54576203e-09, 3.25605721e-10, 
+        >>>     1.00000000e-11, 4.71063799e-16])
+        >>> np.allclose(m(10**np.arange(1,5)),expected)
+        >>> True
+        """
+        n0,gamma,d,b = self.get_all_parameters()
+        x = e*(1./self.e0)
+        return n0*x**(-gamma+d/b)*np.exp((d/b**2)*(1-x**b))
+
+    def external_gradient(self,e):
+        """
+        >>> m = PLSuperExpCutoff4([1e-11,2,0.8,1], e0=1e3)
+        >>> expected = np.asarray([1,0,0,0])
+        >>> np.allclose(m.external_gradient(1000),expected)
+        >>> True
+        """
+        n0,gamma,d,b = self.get_all_parameters()
+        f = self(e)
+        x = e*(1./self.e0)
+        lx = np.log(x)
+        xb = x**b
+        return np.asarray([f/n0,-f*lx, f*(lx/b + (1-xb)/b**2),
+                           f*(-d/b**2)*(lx*(1+xb) + 2./b*(1-xb))])
+
+    def flux_relunc(self, energy):
+        """ Return relative uncertainty, ignoring contribution from exponential, if the parameter is free
+        """
+        f2 = self.free[2:].copy()
+        self.free[2:] = False
+        r = super().flux_relunc(energy)
+        self.free[2:] = f2
+        return r
+
+    def set_e0(self, e0p):
+        """ set a new reference energy, adjusting params as needed.
+
+        >>> model1=PLSuperExpCutoff4(e0=1e2)
+        >>> model2=model1.copy()
+        >>> model2.set_e0(1e3)
+        >>> np.allclose(model1(np.logspace(1,7,8)),model2(np.logspace(1,7,8)))
+        True
+        """
+        n0,gamma,d,b = self.get_all_parameters()
+        a = self.e0/e0p
+        self['Curvature'] = d/a**b
+        self['Index'] = gamma-d/b*(1-1/a**b)
+        norm_scale = a**(d/b-gamma)*np.exp((d/b**2)*(1/a**b-1))
+        self['norm'] *= 1/norm_scale
         self.e0 = e0p
 
 class MonoenergeticCurvature(Model):
