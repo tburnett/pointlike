@@ -57,7 +57,7 @@ stagenames = dict(
     # addseeds_all =  StageBatchJob( dict(seed_key='all'), next='update_full', sum='config counts seedcheck', 
     #     help='start update sequence with all seeds'),    
     # #update_seeds=  StageBatchJob( dict(add_seeds_flag=True), sum='config counts', help='start update sequence with new seed soruces'),
-    finish      =  StageBatchJob( dict(finish=True),     sum='sourceinfo localization associations environment counts', 
+    finish      =  StageBatchJob( dict(finish=True),     sum='sourceinfo localization associations environment counts pulsars', 
                                 help='localize, associations,pulsars, sedfigs',job_list='$POINTLIKE_DIR/infrastructure/finish_jobs.txt' ),
     finish_month=  StageBatchJob( dict(finish=True),     sum='transientinfo', help='plots for monthly transients', ),
     residuals   =  StageBatchJob( dict(residual_flag=True), sum='residuals',  help='generate residual tables for all sources', ),

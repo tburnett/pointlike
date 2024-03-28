@@ -100,7 +100,7 @@ class ROImodel(list):
         """ array of free parameter names """
         names = []
         for source_name, model in zip(self.source_names, self.models):
-            for pname in np.array(model.param_names)[model.free]:
+            for pname in np.array(model.param_names)[np.array(model.free)]: # mod for future warning
                 names.append(source_name.strip()+'_'+pname)
         return np.array(names)
     

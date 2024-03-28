@@ -208,8 +208,8 @@ class MakeCat(object):
         self.add('GLAT', [s.b() for s in sdir])
         
         # localization 
-        f95, quad = 2.45*localization_systematic[0], localization_systematic[1] # 
-        print 'Applying factor of %.2f to localization errors, and adding %.3g deg in quadrature' % localization_systematic
+        # f95, quad = 2.45*localization_systematic[0], localization_systematic[1] # 
+        # print 'Applying factor of %.2f to localization errors, and adding %.3g deg in quadrature' % localization_systematic
         self.add('LocalizationQuality', z.locqual)
         major, minor, posangle = z.a, z.b, z.ang 
         flags = z.flags
@@ -220,8 +220,10 @@ class MakeCat(object):
             minor[refit] = z[refit].bx
             posangle[refit] =  z[refit].angx
             flags[refit] += 16
-        self.add('Conf_95_SemiMajor', np.sqrt((f95*major)**2+quad**2) )
-        self.add('Conf_95_SemiMinor', np.sqrt((f95*minor)**2+quad**2) )
+        # self.add('Conf_95_SemiMajor', np.sqrt((f95*major)**2+quad**2) )
+        # self.add('Conf_95_SemiMinor', np.sqrt((f95*minor)**2+quad**2) )
+        self.add('Conf_95_SemiMajor', 2.45 * major * z.systematic)
+        self.add('Conf_95_SemiMinor', 2.45 * minor * z.systematic)
         self.add('Conf_95_PosAng',    posangle)
         
         # determine which modelname to use, how to interpret index2

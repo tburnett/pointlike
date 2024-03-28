@@ -389,7 +389,7 @@ class FitsMapCubeList():
     def __init__(self, filename):
         filenames = open(filename).read().split('\n')
         assert len(filenames)>1, 'Expected more than one filename:\n{}'.format(filenames)
-        self.cubelist = map(FitsMapCube, filenames)
+        self.cubelist = map(FitsMapCube, filter(lambda s: len(s)>0, filenames))
         self.loaded=False
     def load(self):
         self.loaded=True

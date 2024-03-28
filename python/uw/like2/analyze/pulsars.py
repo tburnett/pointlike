@@ -309,12 +309,13 @@ class Pulsars(sourceinfo.SourceInfo):
                              r95='R95,95 radius (deg), NaN if not calculated',
                                 ROI_index='ROI Index,Index of the ROI, a HEALPix ring index')
             # Table of weak or not fit
-            weak_df = latsel.query('ts<10')
+            weak_df = self.weak_df = latsel.query('ts<10')
             self.atable += html_table(weak_df, label_info,
                         heading = '<p>{} LAT catalog entries with weak or no fit (TS<10); positioned at Pulsar'.format(len(weak_df)),
                         name=self.plotfolder+'/weak', maxlines=20,
                         float_format=(FloatFormat(2)))
-            self.atable += html_table(latsel.query('ts>10'), label_info,
+            self.unassoc_df = latsel.query('ts>10')
+            self.atable += html_table(self.unassoc_df, label_info,
                         heading = '<p>LAT catalog entries with nearby, but currently unassociated source',
                         name=self.plotfolder+'/far', maxlines=20,
                         float_format=(FloatFormat(2)))
@@ -403,7 +404,7 @@ class Pulsars(sourceinfo.SourceInfo):
         
         # make file table
         ptx = pt[not_incluster][
-            'jname glat glon edot P0 history Hmax ts aprob aang curvature pivot_energy locqual'.split()].sort_index(by='name')
+            'jname glat glon edot P0 history Hmax ts aprob aang curvature pivot_energy locqual'.split()].sort_values(by='name')
         hilat = abs(ptx.glat)>5
         if len(ptx)>0:
             colinfo=dict(name='Source Name,click for link to SED',

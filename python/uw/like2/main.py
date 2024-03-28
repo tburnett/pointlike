@@ -444,9 +444,10 @@ class ROI(views.LikelihoodViews):
                 if refit or not hasattr(source,'ellipse') or source.ellipse is None:
                     loc.localize()
                     loc.summary()
-                tsize = kwargs.pop('tsize', source.ellipse[2]*15.) if hasattr(source, 'ellipse') and source.ellipse is not None \
+                tsize = plot_kw.pop('tsize', source.ellipse[2]*15.) if hasattr(source, 'ellipse') and source.ellipse is not None \
                          else 2.0 # scale according to major axis s
                 plot_kw.update(size=tsize, pixelsize=kwargs.pop('pixelsize', tsize/15.), maxsize=tsize)
+
             except Exception, e:
                 print 'Failed localization for source %s: %s' % (source.name, e)
                 if not ignore_exception:

@@ -58,9 +58,9 @@ class SourceComparison(sourceinfo.SourceInfo):
             print 'warning: ID_Probability field not found' 
             id_prob = [np.nan]*len(ft)
         else:
-            id_name = fieldnames[range(len(fieldnames))[id_check][0]]
+            id_name = fieldnames[np.arange(len(fieldnames))[id_check][0]]
             print 'Using prob from field {}'.format(id_name)
-            id_prob = ft[id-name]
+            id_prob = ft[id_name]
 
         cat_skydirs = map (lambda x,y: SkyDir(float(x),float(y)), 
                            ft.RAJ2000, ft.DEJ2000)

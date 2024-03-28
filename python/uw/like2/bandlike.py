@@ -135,7 +135,9 @@ class BandLike(object):
         self.model_pixels = self.fixed_pixels.copy()
         for m in self.free_sources:
             if m.counts==0:
-                print 'Source {} is inactive, but free'.format(m.source.name) 
+                if not m.source.name.startswith('PSR'):
+                    # allow undetected pulsars 
+                    print 'Source {} is inactive, but free'.format(m.source.name) 
                 continue # should be no inactive free sources?
             self.model_pixels += m.pix_counts
        

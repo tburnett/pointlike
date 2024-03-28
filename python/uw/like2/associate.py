@@ -8,12 +8,24 @@ import numpy as np
 from skymaps import SkyDir
 from uw.like import srcid  # gtsrcid work-alike from Eric
 
+#### late in the day, wire in corrections for uw1409
+class ApplySystematic(object):
+    def __init__(self, systematic):
+        self.systematic = systematic
+    def __call__(self, a,b, glat):
+        sf =  self.systematic[0] if np.abs(glat)>5 else self.systematic[2]
+        sa = self.systematic[1]
+        r95 = 60* 2.45 * np.sqrt(a*b)
+        return np.sqrt(sf**2 + (sa/r95)**2)
+sfunc = ApplySystematic([1.075, 0.475, 1.48])
 
 class SrcId(srcid.SourceAssociation):
     """
     adapter to Eric Wallace's source association code
     """
-    def __init__(self, catalog_path='$FERMI/catalog/', srcid='srcid', classes='all_but_gammas', quiet=True):
+    def __init__(self, catalog_path='$FERMI/catalog/', srcid='srcid', classes='all_but_gammas', 
+        apply_systematic=False,
+        quiet=True):
         """ 
         catalog_path : string
             path to the catalogs, expect to find srcid/classes under it
@@ -21,6 +33,7 @@ class SrcId(srcid.SourceAssociation):
             list of classes to apply,
         
         """
+        self.apply_systematic = apply_systematic
         self.classes = classes
         catalog_path = os.path.expandvars(catalog_path)
         d = os.path.join(catalog_path, srcid, 'classes')
@@ -76,6 +89,13 @@ class SrcId(srcid.SourceAssociation):
             assert len(error)==3, 'wrong length for error ellipse specification'
         if not isinstance(pos, SkyDir):
             pos = SkyDir(*pos)
+
+        # late in the day: apply systematic correction to a,b here
+        if self.apply_systematic:
+            factor = sfunc(error[0],error[1], pos.b())
+            error[0] *= factor
+            error[1] *= factor
+
         source_ass = self.id(pos,error)
         # select first association per catalog, rearrange to sort on over-all prob.
         items =  source_ass.items()

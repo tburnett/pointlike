@@ -128,7 +128,7 @@ class Source(object):
                 # undo freezing
                 print'Unfreezing E_break for source %s' % self.name
                 self.model.free[-1]=True
-        if self.model.name not in ['LogParabola','PLSuperExpCutoff','ExpCutoff', 'Constant']:
+        if self.model.name not in ['LogParabola','PLSuperExpCutoff','ExpCutoff', 'Constant','PLSuperExpCutoff4']:
             raise Exception('model %s not supported' % self.model.name)
         #self.free = self.model.free.copy()
 

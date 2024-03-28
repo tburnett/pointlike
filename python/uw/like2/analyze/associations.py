@@ -428,16 +428,31 @@ class Associations(sourceinfo.SourceInfo):
 
         txt = 'Applied systematic factor: {0:.2f} ({2:.2f} if |b|<5) and {1} arcmin '\
                 'added in quadrature with r95.'.format(*systematic)
-        print txt        
+     
         self.localization_html+= '<br><br>'+txt
+
 
         t = self.df.acat
         df = self.df
         ts = np.array(df.ts,float)
+        hilat = np.abs(df.glat.values)>5
         locqual = np.array(df.locqual,float)
         locqual[np.isnan(locqual)]=99
         r95 = 60* 2.45 * np.sqrt(np.array(df.a, float)*np.array(df.b,float))
         r95[np.isnan(r95)]=99
+        
+        # check for new field
+        systematic_factor = df.get('systematic', None)
+        if systematic_factor is not None:
+            txt += '\nActually using pre-computed systematic factor based on above.'
+            fctr = systematic_factor
+        else:
+            # adjust using the systematics
+            sf = np.where(hilat, systematic[0], systematic[2])
+            sa = systematic[1]
+            fctr = np.sqrt(sf**2 + (sa/r95)**2)
+        
+        print txt   
         
         # population selections from association
         agn = np.array([x in 'crates bzcat agn bllac'.split() for x in t])
@@ -445,12 +460,7 @@ class Associations(sourceinfo.SourceInfo):
         unid= np.array([x in 'unid'.split() for x in t])
         otherid=~(agn | psr | unid)
         
-        hilat = np.abs(df.glat.values)>5
-        
-        # adjust using the systematics
-        sf = np.where(hilat, systematic[0], systematic[2])
-        sa = systematic[1]
-        deltats = df.adeltats / (sf**2 + (sa/r95)**2)
+        deltats = df.adeltats / fctr**2 
 
         def select(sel, rlim=(0,20) ,):
             cut = sel & (df.aprob>0.8) & (ts>tsmin) & (locqual<qualmax) & (r95>rlim[0]) & (r95<rlim[1])
@@ -467,17 +477,20 @@ class Associations(sourceinfo.SourceInfo):
             cut = select(sel, rcut)
             try:
                 z = FitExponential(cut, name);
-            except:
-                z = None
-            print '{:14} {:3}{:3}  {:6.0f} {:6.2f}'.format(name,
+                print '{:14} {:3}{:3}  {:6.0f} {:6.2f}'.format(name,
                      rcut[0],rcut[1], len(z.vcut), z.factor if z is not None else 99)
+            except Exception, e:
+                print 'Fail:', e
+                z = None
+
             zz.append(z)
         self.fit_summary=zz    
         if not make_plots: return
         fig, axx = plt.subplots(2,len(cases)//2, figsize=(12,8), sharex=True)
         plt.tight_layout()
         for ax, z in zip(axx.flatten(), zz):
-            z.plot(ax=ax, xlabel=r'$\Delta TS$');
+            if z is not None:
+                 z.plot(ax=ax, xlabel=r'$\Delta TS$');
         #axx.flatten()[-1].set_visible(False)           
         return fig
 

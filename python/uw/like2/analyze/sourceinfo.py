@@ -32,6 +32,21 @@ class SourceInfo(analysis_base.AnalysisBase): #diagnostics.Diagnostics):
     """
     require='pickle.zip'
 
+    def apply_systematic(self, df):
+        """
+        Create column systematic with the systematic factors
+        """
+        systematic = self.config['localization_systematics']
+        hilat = np.abs(df.glat.values)>5
+        print('Applying localization systematic factors {}'.format(systematic))
+        # adjust using the systematics
+        sf = np.where(hilat, systematic[0], systematic[2])
+        sa = systematic[1]
+        r95 = 60* 2.45 * np.sqrt(np.array(df.a, float)*np.array(df.b,float))
+        r95[np.isnan(r95)]=99
+        factor = np.sqrt(sf**2 + (sa/r95)**2)
+        return factor
+
     def setup(self, **kwargs):
         version = os.path.split(os.getcwd())[-1]
         self.csvfile='sources_%s.csv' % version        
@@ -165,11 +180,13 @@ class SourceInfo(analysis_base.AnalysisBase): #diagnostics.Diagnostics):
             catfun =  lambda x: x['cat'][0] if not pd.isnull(x) else ''
             df['acat'] = np.array(map(catfun, df.associations))
             
+            # apply the systematic correction
+            df['systematic'] = self.apply_systematic(df)
+ 
             self.df = df.sort_values(by='ra')
             self.curvature(setup=True) # add curvature item
             self.df.to_pickle(filename)
             assert 'aprob' in df.columns
-
             if not self.quiet:
                 print 'saved %s' % filename
 
@@ -1001,7 +1018,7 @@ class SourceInfo(analysis_base.AnalysisBase): #diagnostics.Diagnostics):
         ext = df.isextended
 
         cols = 'ra dec ts fitqual pindex roiname'.split()
-        extdf = pd.DataFrame(df[ext][cols]).sort_values(by='roiname')
+        extdf = pd.DataFrame(df[ext][cols]).sort_values(by='name')
         config = configuration.Configuration('.', quiet=True, postpone=True)
         ecat = extended.ExtendedCatalog(os.path.expandvars('$FERMI/catalog/')+config.extended)
         extdf['spatial_model'] = [ecat[name].dmodel.name for name in extdf.index]
@@ -1072,16 +1089,29 @@ class SourceInfo(analysis_base.AnalysisBase): #diagnostics.Diagnostics):
                                             float_format=FloatFormat(2))
         return fig
     
+
+    def make_csv(self):
+
+        colstosave="""ra dec ts aprob acat eflux100 modelname pars errs freebits fitqual e0 flux flux_unc pindex pindex_unc index2 index2_unc
+                 cutoff cutoff_unc  eflux100_unc locqual delta_ts a b ang systematic flags jname roi""".split()
+        # selection: ts>0 and (a<0.5 | ispar | isnan(a))
+        df = self.df.loc[(self.df.ts>10) & ((self.df.a<0.5)| self.df.psr | pd.isna(self.df.a))].copy()
+
+        ## Rethink this attempt to use the jname as an index
+        # oldname = df.index # current name
+        # df.index = (np.where( np.logical_or(pd.isna(df.a), df.psr), oldname, df.jname))
+        # df.loc[:,'alias'] = df.index
+        df.loc[:, 'roi'] = df.roiname.apply(lambda name: int(name[5:]))
+        
+        df[colstosave].to_csv(self.csvfile)
+        print 'saved truncated csv version to "%s"' %self.csvfile
+
+
     def all_plots(self):
 
         plt.close('all')
-        probfun = lambda x: x['prob'][0] if not pd.isnull(x) else 0
-        self.df['aprob'] = np.array([ probfun(assoc) for  assoc in self.df.associations])
+        self.make_csv()
 
-        colstosave="""ra dec roiname ts aprob eflux100 modelname pars errs freebits fitqual e0 flux flux_unc pindex pindex_unc index2 index2_unc
-                 cutoff cutoff_unc  eflux100_unc locqual delta_ts a b ang flags jname """.split()
-        self.df.loc[(self.df.ts>10) | self.df.psr ][colstosave].to_csv(self.csvfile)
-        print 'saved truncated csv version to "%s"' %self.csvfile
         
         self.runfigures([self.census, 
             self.cumulative_ts, 
